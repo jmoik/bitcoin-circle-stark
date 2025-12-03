@@ -159,7 +159,7 @@ fn main() {
         );
         println!();
         println!("According to that transaction, send BTC from that UTXO to the program and the state caboose with the initial state");
-        println!("> bitcoin-cli {} createrawtransaction \"[{{\\\"txid\\\":\\\"{}\\\", \\\"vout\\\": {}}}]\" \"[{{\\\"{}\\\":{:.8}}}, {{\\\"{}\\\":0.0000033}}]\"",
+        println!("> bitcoin-cli {} createrawtransaction \"[{{\\\"txid\\\":\\\"{}\\\", \\\"vout\\\": {}, \\\"sequence\\\": 4294967293}}]\" \"[{{\\\"{}\\\":{:.8}}}, {{\\\"{}\\\":0.0000033}}]\"",
                  cli_flag,
                  "[txid]".on_bright_green().black(),
                  "[vout]".on_bright_green().black(), program_address, rest_display,
