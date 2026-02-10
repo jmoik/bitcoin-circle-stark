@@ -9,6 +9,7 @@ use bitcoin_script_dsl::constraint_system::Element;
 use bitcoin_script_dsl::ldm::LDM;
 use bitcoin_scriptexec::utils::scriptint_vec;
 use covenants_gadgets::utils::stack_hash::StackHash;
+use bitcoin::taproot::LeafVersion;
 use covenants_gadgets::CovenantProgram;
 use sha2::digest::Update;
 use sha2::{Digest, Sha256};
@@ -306,6 +307,10 @@ impl CovenantProgram for PlonkVerifierProgram {
                 OP_FROMALTSTACK OP_EQUALVERIFY
             }
         }
+    }
+
+    fn leaf_version() -> LeafVersion {
+        LeafVersion::from_consensus(0xc2).unwrap()
     }
 
     fn run(id: usize, _: &Self::State, _: &Self::Input) -> Result<Self::State> {
