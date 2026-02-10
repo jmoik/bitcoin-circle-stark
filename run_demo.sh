@@ -4,8 +4,8 @@ set -e
 # Configuration
 NETWORK="${1:-regtest}"
 FEATURES="${2:-}"  # Pass features: "gsr", "assume-op-mul", or "gsr,assume-op-mul"
-BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr/build/bin/bitcoin-cli"
-BITCOIND="/Users/julian/Code/bitcoin/gsr/build/bin/bitcoind"
+BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoin-cli"
+BITCOIND="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoind"
 
 echo "=== Bitcoin Circle STARK Demo ==="
 echo "Network: $NETWORK"
@@ -112,9 +112,12 @@ echo
 echo "    Generated $TX_COUNT transactions"
 
 # Broadcast all transactions to mempool (in order: tx-1, tx-2, ..., tx-N)
-echo "[7/8] Broadcasting transactions to mempool..."
+# Mine a block every BATCH_SIZE transactions to avoid "too-large-cluster" mempool rejection
+BATCH_SIZE=5
+echo "[7/8] Broadcasting transactions (mining every $BATCH_SIZE txs)..."
 BROADCAST_COUNT=0
 FAILED=0
+MINER_ADDR=$(bitcoin-cli -$NETWORK getnewaddress)
 
 # Disable exit-on-error for broadcast loop (we handle errors ourselves)
 set +e
@@ -122,11 +125,11 @@ for i in $(seq 1 "$TX_COUNT"); do
     tx_file="demo/tx-${i}.txt"
     if [ -f "$tx_file" ]; then
         TX_HEX=$(cat "$tx_file")
-        
+
         # Broadcast the transaction
         TXID=$(bitcoin-cli -"$NETWORK" sendrawtransaction "$TX_HEX" 2>&1)
         RESULT=$?
-        
+
         if [ $RESULT -eq 0 ]; then
             BROADCAST_COUNT=$((BROADCAST_COUNT + 1))
             echo "    [$i/$TX_COUNT] Broadcast: ${TXID:0:20}..."
@@ -135,6 +138,12 @@ for i in $(seq 1 "$TX_COUNT"); do
             FAILED=1
             # Stop on first failure since subsequent transactions depend on previous ones
             break
+        fi
+
+        # Mine a block every BATCH_SIZE transactions to keep cluster size small
+        if [ $((BROADCAST_COUNT % BATCH_SIZE)) -eq 0 ]; then
+            bitcoin-cli -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
+            echo "    --- Mined block (confirmed $BROADCAST_COUNT txs so far) ---"
         fi
     else
         echo "    [$i/$TX_COUNT] File not found: $tx_file"
@@ -146,12 +155,10 @@ set -e  # Re-enable exit-on-error
 
 echo "    Successfully broadcast: $BROADCAST_COUNT/$TX_COUNT"
 
-# Mine blocks to confirm all transactions
-echo "[8/8] Mining confirmation blocks..."
-MINER_ADDR=$(bitcoin-cli -$NETWORK getnewaddress)
-# Mine enough blocks to confirm all transactions (1 block should be enough for regtest)
-bitcoin-cli -$NETWORK generatetoaddress 10 "$MINER_ADDR" > /dev/null
-echo "    Mined 1 block"
+# Mine final block to confirm remaining transactions
+echo "[8/8] Mining final confirmation block..."
+bitcoin-cli -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
+echo "    Done"
 
 # Verify confirmations
 echo
