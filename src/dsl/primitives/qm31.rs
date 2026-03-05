@@ -1,7 +1,10 @@
 use crate::dsl::primitives::cm31::CM31Var;
+#[cfg(not(feature = "assume-op-mul"))]
 use crate::dsl::primitives::cm31_limbs::CM31LimbsVar;
 use crate::dsl::primitives::m31::M31Var;
+#[cfg(not(feature = "assume-op-mul"))]
 use crate::dsl::primitives::m31_limbs::M31LimbsVar;
+#[cfg(not(feature = "assume-op-mul"))]
 use crate::dsl::primitives::qm31_limbs::QM31LimbsVar;
 use crate::dsl::primitives::table::TableVar;
 use crate::treepp::*;
@@ -135,6 +138,7 @@ impl Sub<&M31Var> for QM31Var {
     }
 }
 
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &QM31Var)> for &QM31Var {
     type Output = QM31Var;
 
@@ -148,6 +152,17 @@ impl Mul<(&TableVar, &QM31Var)> for &QM31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &QM31Var)> for &QM31Var {
+    type Output = QM31Var;
+
+    fn mul(self, rhs: (&TableVar, &QM31Var)) -> Self::Output {
+        let rhs = rhs.1;
+        self * rhs
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &M31Var)> for &QM31Var {
     type Output = QM31Var;
 
@@ -176,6 +191,25 @@ impl Mul<(&TableVar, &M31Var)> for &QM31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &M31Var)> for &QM31Var {
+    type Output = QM31Var;
+
+    fn mul(self, rhs: (&TableVar, &M31Var)) -> Self::Output {
+        let rhs = rhs.1;
+        let first = CM31Var {
+            real: &self.first.real * rhs,
+            imag: &self.first.imag * rhs,
+        };
+        let second = CM31Var {
+            real: &self.second.real * rhs,
+            imag: &self.second.imag * rhs,
+        };
+        QM31Var { first, second }
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &CM31Var)> for &QM31Var {
     type Output = QM31Var;
 
@@ -196,6 +230,19 @@ impl Mul<(&TableVar, &CM31Var)> for &QM31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &CM31Var)> for &QM31Var {
+    type Output = QM31Var;
+
+    fn mul(self, rhs: (&TableVar, &CM31Var)) -> Self::Output {
+        let rhs = rhs.1;
+        let first = &self.first * rhs;
+        let second = &self.second * rhs;
+        QM31Var { first, second }
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul for &QM31Var {
     type Output = QM31Var;
 
@@ -213,6 +260,31 @@ impl Mul for &QM31Var {
         .unwrap();
 
         QM31Var::new_function_output(&cs, res).unwrap()
+    }
+}
+
+#[cfg(feature = "assume-op-mul")]
+impl Mul for &QM31Var {
+    type Output = QM31Var;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Karatsuba: (a+bu)(c+du) = (ac + R·bd) + ((a+b)(c+d) - ac - bd)u
+        // where R = 2+i (the irreducible polynomial is u² - (2+i))
+        let ac = &self.first * &rhs.first;
+        let bd = &self.second * &rhs.second;
+        let a_plus_b = &self.first + &self.second;
+        let c_plus_d = &rhs.first + &rhs.second;
+        let abcd = &a_plus_b * &c_plus_d;
+
+        // second = (a+b)(c+d) - ac - bd = ad + bc
+        let second = &(&abcd - &ac) - &bd;
+
+        // first = ac + (2+i)·bd = ac + 2·bd + i·bd
+        // i·bd = shift_by_i(bd)
+        let bd_shifted = bd.shift_by_i();
+        let first = &(&ac + &bd) + &(&bd + &bd_shifted);
+
+        QM31Var { first, second }
     }
 }
 
@@ -277,6 +349,7 @@ impl QM31Var {
         self.shift_by_i().shift_by_j()
     }
 
+    #[cfg(not(feature = "assume-op-mul"))]
     pub fn inverse(&self, table: &TableVar) -> QM31Var {
         let cs = self.cs();
         let res = self.value().unwrap().inverse();
@@ -286,6 +359,11 @@ impl QM31Var {
         expected_one.is_one();
 
         res_var
+    }
+
+    #[cfg(feature = "assume-op-mul")]
+    pub fn inverse(&self, _table: &TableVar) -> QM31Var {
+        self.inverse_without_table()
     }
 
     pub fn inverse_without_table(&self) -> QM31Var {
@@ -357,7 +435,10 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
+    #[cfg(not(feature = "assume-op-mul"))]
     use bitcoin_script_dsl::test_program;
+    #[cfg(feature = "assume-op-mul")]
+    use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
 

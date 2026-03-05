@@ -3,11 +3,11 @@ use crate::treepp::*;
 use crate::utils::hash;
 use crate::OP_HINT;
 use anyhow::Result;
+use bitcoin::taproot::LeafVersion;
 use bitcoin_script_dsl::compiler::Compiler;
 use bitcoin_script_dsl::constraint_system::Element;
 use bitcoin_script_dsl::ldm::LDM;
 use covenants_gadgets::utils::stack_hash::StackHash;
-use bitcoin::taproot::LeafVersion;
 use covenants_gadgets::CovenantProgram;
 use sha2::digest::Update;
 use sha2::{Digest, Sha256};
@@ -366,7 +366,6 @@ mod test {
             if old_state.pc < fees.len() {
                 Some(SimulationInstruction {
                     program_index: old_state.pc,
-                    fee: fees[old_state.pc],
                     program_input: all_information.get_input(old_state.pc),
                 })
             } else {

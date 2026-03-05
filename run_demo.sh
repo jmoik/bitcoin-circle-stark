@@ -122,6 +122,11 @@ FAILED=0
 MINER_ADDR=$($BITCOIN_CLI -$NETWORK getnewaddress)
 
 # Disable exit-on-error for broadcast loop (we handle errors ourselves)
+TOTAL_WEIGHT=0
+TOTAL_VSIZE=0
+MIN_WEIGHT=999999999
+MAX_WEIGHT=0
+
 set +e
 for i in $(seq 1 "$TX_COUNT"); do
     tx_file="demo/tx-${i}.txt"
@@ -134,6 +139,20 @@ for i in $(seq 1 "$TX_COUNT"); do
 
         if [ $RESULT -eq 0 ]; then
             BROADCAST_COUNT=$((BROADCAST_COUNT + 1))
+
+            # Collect weight stats from the raw hex before it gets mined
+            DECODED=$($BITCOIN_CLI -"$NETWORK" decoderawtransaction "$TX_HEX" 2>/dev/null)
+            if [ -n "$DECODED" ]; then
+                WEIGHT=$(echo "$DECODED" | grep '"weight"' | head -1 | grep -oE '[0-9]+')
+                VSIZE=$(echo "$DECODED" | grep '"vsize"' | head -1 | grep -oE '[0-9]+')
+                if [ -n "$WEIGHT" ]; then
+                    TOTAL_WEIGHT=$((TOTAL_WEIGHT + WEIGHT))
+                    TOTAL_VSIZE=$((TOTAL_VSIZE + VSIZE))
+                    [ "$WEIGHT" -lt "$MIN_WEIGHT" ] && MIN_WEIGHT=$WEIGHT
+                    [ "$WEIGHT" -gt "$MAX_WEIGHT" ] && MAX_WEIGHT=$WEIGHT
+                fi
+            fi
+
             echo "    [$i/$TX_COUNT] Broadcast: ${TXID:0:20}..."
         else
             echo "    [$i/$TX_COUNT] Failed: $TXID"
@@ -162,7 +181,30 @@ echo "[8/8] Mining final confirmation block..."
 $BITCOIN_CLI -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
 echo "    Done"
 
-# Verify confirmations
+# Print transaction weight statistics
+echo
+echo "=== Transaction Statistics ==="
+if [ "$BROADCAST_COUNT" -gt 0 ] && [ "$TOTAL_WEIGHT" -gt 0 ]; then
+    AVG_WEIGHT=$((TOTAL_WEIGHT / BROADCAST_COUNT))
+    AVG_VSIZE=$((TOTAL_VSIZE / BROADCAST_COUNT))
+
+    echo "Transactions:     $BROADCAST_COUNT"
+    echo "Total weight:     $TOTAL_WEIGHT WU"
+    echo "Total vsize:      $TOTAL_VSIZE vB"
+    echo "Avg tx weight:    $AVG_WEIGHT WU"
+    echo "Avg tx vsize:     $AVG_VSIZE vB"
+    echo "Min tx weight:    $MIN_WEIGHT WU"
+    echo "Max tx weight:    $MAX_WEIGHT WU"
+
+    # Estimate total fee at common fee rates
+    for RATE in 2 7 15; do
+        TOTAL_FEE=$((TOTAL_VSIZE * RATE))
+        echo "Est. total fee @${RATE} sat/vB: $TOTAL_FEE sat ($(echo "scale=8; $TOTAL_FEE / 100000000" | bc) BTC)"
+    done
+else
+    echo "No weight data collected."
+fi
+
 echo
 echo "=== Demo complete! ==="
 echo "Transaction files saved in ./demo/"

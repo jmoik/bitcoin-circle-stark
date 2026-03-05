@@ -26,7 +26,10 @@ mod test {
     use crate::dsl::plonk::hints::Hints;
     use crate::treepp::*;
     use bitcoin_script_dsl::ldm::LDM;
+    #[cfg(not(feature = "assume-op-mul"))]
     use bitcoin_script_dsl::test_program;
+    #[cfg(feature = "assume-op-mul")]
+    use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use stwo_prover::core::prover::N_QUERIES;
 
     #[test]

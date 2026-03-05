@@ -4,10 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-rust-bitcoin-m31 = { git = "https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-m31" }
-bitcoin-script = { git = "https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script", tag = "1.0.0" }
+rust-bitcoin-m31 = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-m31" }
+bitcoin-script = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-script" }
 bitcoin = "0.32.0"
-bitcoin-scriptexec = { git = "https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec", features = [
+bitcoin-scriptexec = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-scriptexec", features = [
     "debug",
 ] }
 sha2 = "0.10.8"
@@ -20,8 +20,8 @@ ctor = "0.4.1"
 itertools = "0.14.0"
 hex = "0.4.3"
 anyhow = "1.0.97"
-bitcoin-script-dsl = { git = "https://github.com/Bitcoin-Wildlife-Sanctuary/dsl", tag = "0.2.0" }
-covenants-gadgets = { git = "https://github.com/Bitcoin-Wildlife-Sanctuary/covenants-gadgets" }
+bitcoin-script-dsl = { path = "/Users/julian/Code/bitcoin/projects/stark/dsl" }
+covenants-gadgets = { path = "/Users/julian/Code/bitcoin/projects/stark/covenants-gadgets" }
 clap = { version = "4.5.32", features = ["derive"] }
 colored = "2.1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -34,7 +34,7 @@ default-features = false
 features = ["user-hooks"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(feature, values("assume-op-mul"))'] }
 
 [profile.dev]
 opt-level = 3
@@ -45,3 +45,20 @@ lto = true
 [features]
 profiler = ["bitcoin-scriptexec/profiler"]
 assume-op-cat = []
+assume-op-mul = []
+
+# Override transitive git dependencies with local paths
+[patch."https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script"]
+bitcoin-script = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-script" }
+
+[patch."https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec"]
+bitcoin-scriptexec = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-scriptexec" }
+
+[patch."https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec/"]
+bitcoin-scriptexec = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-scriptexec" }
+
+[patch."https://github.com/Bitcoin-Wildlife-Sanctuary/bitcoin-simulator"]
+bitcoin-simulator = { path = "/Users/julian/Code/bitcoin/projects/stark/bitcoin-simulator" }
+
+[patch."https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-m31"]
+rust-bitcoin-m31 = { path = "/Users/julian/Code/bitcoin/projects/stark/rust-bitcoin-m31" }

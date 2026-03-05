@@ -1,3 +1,4 @@
+#[cfg(not(feature = "assume-op-mul"))]
 use super::m31_limbs::{m31_to_limbs_gadget, M31LimbsVar};
 use super::table::TableVar;
 use crate::treepp::*;
@@ -9,6 +10,9 @@ use bitcoin_script_dsl::stack::Stack;
 use std::ops::{Add, Mul, Neg, Sub};
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::FieldExpOps;
+
+#[cfg(feature = "assume-op-mul")]
+const M31_MOD: u32 = (1u32 << 31) - 1;
 
 #[derive(Debug, Clone)]
 pub struct M31Var {
@@ -81,6 +85,7 @@ impl Sub for &M31Var {
     }
 }
 
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul for &M31Var {
     type Output = M31Var;
 
@@ -96,6 +101,30 @@ impl Mul for &M31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul for &M31Var {
+    type Output = M31Var;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        let res = self.value * rhs.value;
+
+        let cs = self.cs.and(&rhs.cs);
+
+        // Compute q = floor(a*b / MOD) as a hint
+        let q = (self.value.0 as u64 * rhs.value.0 as u64) / M31_MOD as u64;
+        let q_var = M31Var::new_hint(&cs, M31::from_u32_unchecked(q as u32)).unwrap();
+
+        cs.insert_script(
+            m31_mul_op_mul_gadget,
+            [self.variable, rhs.variable, q_var.variable],
+        )
+        .unwrap();
+
+        M31Var::new_function_output(&cs, res).unwrap()
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &M31Var)> for &M31Var {
     type Output = M31Var;
 
@@ -106,6 +135,17 @@ impl Mul<(&TableVar, &M31Var)> for &M31Var {
         let self_limbs = M31LimbsVar::from(self);
         let rhs_limbs = M31LimbsVar::from(rhs);
         &self_limbs * (table, &rhs_limbs)
+    }
+}
+
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &M31Var)> for &M31Var {
+    type Output = M31Var;
+
+    fn mul(self, rhs: (&TableVar, &M31Var)) -> Self::Output {
+        // With OP_MUL, ignore the table and use direct multiplication
+        let rhs = rhs.1;
+        self * rhs
     }
 }
 
@@ -139,6 +179,7 @@ impl M31Var {
             .unwrap();
     }
 
+    #[cfg(not(feature = "assume-op-mul"))]
     pub fn inverse(&self, table: &TableVar) -> Self {
         let self_limbs = M31LimbsVar::from(self);
         let inv_limbs = self_limbs.inverse(table);
@@ -156,6 +197,12 @@ impl M31Var {
         .unwrap();
 
         inv
+    }
+
+    #[cfg(feature = "assume-op-mul")]
+    pub fn inverse(&self, _table: &TableVar) -> Self {
+        // With OP_MUL, no need for limbs/table — just hint and verify
+        self.inverse_without_table()
     }
 
     pub fn inverse_without_table(&self) -> Self {
@@ -177,6 +224,29 @@ impl M31Var {
             )
             .unwrap();
         M31Var::new_function_output(&self.cs, M31::from_u32_unchecked(res)).unwrap()
+    }
+}
+
+/// OP_MUL-based M31 multiplication gadget.
+///
+/// Stack input:  a, b, q  (q = floor(a*b / MOD), provided as hint)
+/// Stack output: r = a*b - q*MOD, verified r < MOD
+///
+/// The subtraction a*b - q*MOD is always non-negative because q = floor(a*b / MOD).
+/// Max values: a,b < 2^31, so a*b < 2^62, q*MOD < 2^62 — both fit in i64/Val64.
+#[cfg(feature = "assume-op-mul")]
+fn m31_mul_op_mul_gadget() -> Script {
+    script! {
+        // Stack: a, b, q
+        OP_DUP { M31_MOD }     // a, b, q, q, MOD
+        OP_MUL                  // a, b, q, q*MOD
+        OP_TOALTSTACK           // a, b, q        alt: q*MOD
+        OP_DROP                 // a, b
+        OP_MUL                  // a*b             alt: q*MOD
+        OP_FROMALTSTACK         // a*b, q*MOD
+        OP_SUB                  // r = a*b - q*MOD
+        OP_DUP { M31_MOD }     // r, r, MOD
+        OP_LESSTHAN OP_VERIFY  // r  (verified r < MOD)
     }
 }
 
@@ -221,9 +291,36 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
+    #[cfg(not(feature = "assume-op-mul"))]
     use bitcoin_script_dsl::test_program;
+    #[cfg(feature = "assume-op-mul")]
+    use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
+
+    #[test]
+    fn test_m31_mul() {
+        let mut prng = ChaCha20Rng::seed_from_u64(0);
+
+        let a_val = rand_m31(&mut prng);
+        let b_val = rand_m31(&mut prng);
+
+        let cs = ConstraintSystem::new_ref();
+
+        let a = M31Var::new_constant(&cs, a_val).unwrap();
+        let b = M31Var::new_constant(&cs, b_val).unwrap();
+        let res = &a * &b;
+
+        cs.set_program_output(&res).unwrap();
+
+        test_program(
+            cs,
+            script! {
+                { a_val * b_val }
+            },
+        )
+        .unwrap();
+    }
 
     #[test]
     fn test_m31_inverse() {

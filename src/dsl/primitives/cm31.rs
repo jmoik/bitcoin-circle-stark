@@ -1,5 +1,7 @@
+#[cfg(not(feature = "assume-op-mul"))]
 use super::cm31_limbs::CM31LimbsVar;
 use super::m31::M31Var;
+#[cfg(not(feature = "assume-op-mul"))]
 use super::m31_limbs::M31LimbsVar;
 use super::table::TableVar;
 use anyhow::Result;
@@ -92,6 +94,7 @@ impl Sub<&M31Var> for &CM31Var {
     }
 }
 
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul for &CM31Var {
     type Output = CM31Var;
 
@@ -112,6 +115,26 @@ impl Mul for &CM31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul for &CM31Var {
+    type Output = CM31Var;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Karatsuba: (a+bi)(c+di) = (ac-bd) + ((a+b)(c+d) - ac - bd)i
+        let ac = &self.real * &rhs.real;
+        let bd = &self.imag * &rhs.imag;
+        let a_plus_b = &self.real + &self.imag;
+        let c_plus_d = &rhs.real + &rhs.imag;
+        let abcd = &a_plus_b * &c_plus_d;
+
+        let real = &ac - &bd;
+        let imag = &(&abcd - &ac) - &bd;
+
+        CM31Var { real, imag }
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
     type Output = CM31Var;
 
@@ -125,6 +148,17 @@ impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
     }
 }
 
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
+    type Output = CM31Var;
+
+    fn mul(self, rhs: (&TableVar, &CM31Var)) -> Self::Output {
+        let rhs = rhs.1;
+        self * rhs
+    }
+}
+
+#[cfg(not(feature = "assume-op-mul"))]
 impl Mul<(&TableVar, &M31Var)> for &CM31Var {
     type Output = CM31Var;
 
@@ -138,6 +172,18 @@ impl Mul<(&TableVar, &M31Var)> for &CM31Var {
         let real = &self_limbs.real * (table, &rhs_limbs);
         let imag = &self_limbs.imag * (table, &rhs_limbs);
 
+        CM31Var { real, imag }
+    }
+}
+
+#[cfg(feature = "assume-op-mul")]
+impl Mul<(&TableVar, &M31Var)> for &CM31Var {
+    type Output = CM31Var;
+
+    fn mul(self, rhs: (&TableVar, &M31Var)) -> Self::Output {
+        let rhs = rhs.1;
+        let real = &self.real * rhs;
+        let imag = &self.imag * rhs;
         CM31Var { real, imag }
     }
 }
@@ -166,6 +212,7 @@ impl CM31Var {
         self.imag.is_zero();
     }
 
+    #[cfg(not(feature = "assume-op-mul"))]
     pub fn inverse(&self, table: &TableVar) -> Self {
         let cs = self.cs();
         let res = self.value().unwrap().inverse();
@@ -175,6 +222,11 @@ impl CM31Var {
         expected_one.is_one();
 
         res_var
+    }
+
+    #[cfg(feature = "assume-op-mul")]
+    pub fn inverse(&self, _table: &TableVar) -> Self {
+        self.inverse_without_table()
     }
 
     pub fn inverse_without_table(&self) -> Self {
@@ -204,7 +256,10 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
+    #[cfg(not(feature = "assume-op-mul"))]
     use bitcoin_script_dsl::test_program;
+    #[cfg(feature = "assume-op-mul")]
+    use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
 

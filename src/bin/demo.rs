@@ -217,7 +217,6 @@ fn main() {
             if old_state.pc < fees.len() {
                 Some(SimulationInstruction::<PlonkVerifierProgram> {
                     program_index: old_state.pc,
-                    fee: (fees[old_state.pc] as f64 / 7.0 * (fee_rate as f64)).ceil() as usize,
                     program_input: all_information.get_input(old_state.pc),
                 })
             } else {
@@ -237,8 +236,9 @@ fn main() {
 
             print_state_info(&old_state, step + 1);
 
+            let step_fee = (fees[old_state.pc] as f64 / 7.0 * (fee_rate as f64)).ceil() as u64;
             let mut new_balance = old_balance;
-            new_balance -= next.fee as u64;
+            new_balance -= step_fee;
             new_balance -= DUST_AMOUNT;
 
             let info = CovenantInput {

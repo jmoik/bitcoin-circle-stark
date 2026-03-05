@@ -211,9 +211,9 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bitcoin",
- "bitcoin-script 0.2.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script?tag=1.0.0)",
+ "bitcoin-script",
  "bitcoin-script-dsl",
- "bitcoin-scriptexec 0.0.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec)",
+ "bitcoin-scriptexec",
  "cargo-husky",
  "clap",
  "colored",
@@ -247,19 +247,6 @@ checksum = "0b47c4ab7a93edb0c7198c5535ed9b52b63095f4e9b45279c6736cec4b856baf"
 [[package]]
 name = "bitcoin-script"
 version = "0.2.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script?tag=1.0.0#2f2510ab9e616eaae5b0db807d13c40eae6964a0"
-dependencies = [
- "bitcoin",
- "hex",
- "proc-macro-error",
- "proc-macro2",
- "quote",
-]
-
-[[package]]
-name = "bitcoin-script"
-version = "0.2.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script#2f2510ab9e616eaae5b0db807d13c40eae6964a0"
 dependencies = [
  "bitcoin",
  "hex",
@@ -271,13 +258,12 @@ dependencies = [
 [[package]]
 name = "bitcoin-script-dsl"
 version = "0.2.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/dsl?tag=0.2.0#e6f986abd27aebfe76617e4017eb3a390a7fc984"
 dependencies = [
  "anyhow",
  "bincode",
  "bitcoin",
- "bitcoin-script 0.2.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script)",
- "bitcoin-scriptexec 0.0.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec)",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
  "fenwick-tree",
  "indexmap",
  "num-traits",
@@ -290,17 +276,6 @@ dependencies = [
 [[package]]
 name = "bitcoin-scriptexec"
 version = "0.0.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec?tag=1.0.0#fe203d2ae6c80e7f5a2dde5f852d9a98c4baa296"
-dependencies = [
- "anyhow",
- "bitcoin",
- "lazy_static",
-]
-
-[[package]]
-name = "bitcoin-scriptexec"
-version = "0.0.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec#fac1401b68baa2e3cb48b126ec1a691d28707567"
 dependencies = [
  "anyhow",
  "bitcoin",
@@ -311,12 +286,11 @@ dependencies = [
 [[package]]
 name = "bitcoin-simulator"
 version = "0.1.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/bitcoin-simulator?tag=1.0.0#bbfaa2ee55932421ed5ff88c3d5b882690262197"
 dependencies = [
  "anyhow",
  "bitcoin",
- "bitcoin-script 0.2.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script?tag=1.0.0)",
- "bitcoin-scriptexec 0.0.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec?tag=1.0.0)",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
  "rusqlite",
 ]
 
@@ -485,12 +459,11 @@ checksum = "7c74b8349d32d297c9134b8c88677813a227df8f779daa29bfc29c183fe3dca6"
 [[package]]
 name = "covenants-gadgets"
 version = "0.1.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/covenants-gadgets#294d09bbd6e789aa5b362197c3099cb7e6e7c76c"
 dependencies = [
  "anyhow",
  "bitcoin",
- "bitcoin-script 0.2.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script?tag=1.0.0)",
- "bitcoin-scriptexec 0.0.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-scriptexec?tag=1.0.0)",
+ "bitcoin-script",
+ "bitcoin-scriptexec",
  "bitcoin-simulator",
  "hex",
  "once_cell",
@@ -1034,10 +1007,9 @@ dependencies = [
 [[package]]
 name = "rust-bitcoin-m31"
 version = "1.0.0"
-source = "git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-m31#551735b3efa7dc79698cb55d9b17149a39b7768e"
 dependencies = [
  "bitcoin",
- "bitcoin-script 0.2.0 (git+https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script?tag=1.0.0)",
+ "bitcoin-script",
 ]
 
 [[package]]

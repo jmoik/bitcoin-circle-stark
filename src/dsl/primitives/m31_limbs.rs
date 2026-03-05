@@ -185,6 +185,7 @@ mod test {
     use crate::dsl::primitives::m31_limbs::M31LimbsVar;
     use crate::dsl::primitives::table::m31::M31Limbs;
     use crate::dsl::primitives::table::utils::{convert_m31_to_limbs, rand_m31};
+    #[cfg(not(feature = "assume-op-mul"))]
     use crate::dsl::primitives::table::TableVar;
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::{AllocVar, BVar};
@@ -232,6 +233,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(not(feature = "assume-op-mul"))]
     fn test_m31_limbs_table_mul() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 
@@ -260,6 +262,7 @@ mod test {
     }
 
     #[test]
+    #[cfg(not(feature = "assume-op-mul"))]
     fn test_m31_limbs_inverse() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 

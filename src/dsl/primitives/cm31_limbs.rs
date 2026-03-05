@@ -121,6 +121,7 @@ impl Add<&CM31LimbsVar> for &CM31LimbsVar {
 }
 
 #[cfg(test)]
+#[cfg(not(feature = "assume-op-mul"))]
 mod test {
     use crate::dsl::primitives::cm31::CM31Var;
     use crate::dsl::primitives::cm31_limbs::CM31LimbsVar;
