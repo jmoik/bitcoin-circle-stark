@@ -22,9 +22,9 @@ impl Lookup8BitGadget {
             OP_ADD
             OP_TOALTSTACK
 
-            // compare abs(a - b)
-            OP_SUB
-            OP_ABS
+            // compute |a - b| (Val64: can't go negative, so conditional swap)
+            OP_2DUP OP_GREATERTHANOREQUAL
+            OP_IF OP_SUB OP_ELSE OP_SWAP OP_SUB OP_ENDIF
 
             // obtain the element for abs(a - b)
             if k != 0 {

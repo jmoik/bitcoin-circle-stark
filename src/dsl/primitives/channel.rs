@@ -1,16 +1,14 @@
 use super::cm31::CM31Var;
 use super::m31::M31Var;
 use super::qm31::QM31Var;
-use crate::channel::{BitcoinIntegerEncodedData, ChannelWithHint, DrawHints};
+use crate::channel::{ChannelWithHint, DrawHints};
 use crate::treepp::*;
 use crate::utils::hash;
 use anyhow::Result;
-use bitcoin::script::{read_scriptint, write_scriptint};
-use bitcoin_script_dsl::builtins::hash::{bitcoin_num_to_bytes, HashVar};
+use bitcoin_script_dsl::builtins::hash::HashVar;
 use bitcoin_script_dsl::builtins::str::StrVar;
 use bitcoin_script_dsl::bvar::{AllocVar, BVar};
 use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
-use num_traits::Zero;
 use sha2::digest::Update;
 use sha2::{Digest, Sha256};
 use stwo_prover::core::channel::Sha256Channel;
@@ -139,42 +137,20 @@ pub trait StrVarWithChannel {
 
 impl StrVarWithChannel for StrVar {
     fn reconstruct_for_channel_draw(&self) -> (M31Var, StrVar) {
-        let res = if self.value == vec![0x80] {
-            (M31::zero(), vec![0x00, 0x00, 0x00, 0x80])
-        } else {
-            let num = read_scriptint(&self.value).unwrap();
-            let abs = M31::from_u32_unchecked(num.unsigned_abs() as u32);
-            let abs_str = bitcoin_num_to_bytes(num.abs());
-
-            if abs_str.len() < 4 {
-                let mut str = self.value.clone();
-                if str.len() < 2 {
-                    str.push(0x00);
-                    str.push(0x00);
-                }
-                if str.len() < 3 {
-                    str.push(0x00);
-                }
-
-                if num < 0 {
-                    str.push(0x80);
-                } else {
-                    str.push(0x00);
-                }
-
-                (abs, str)
-            } else {
-                (abs, self.value.clone())
-            }
-        };
+        // self.value is a raw 4-byte chunk
+        let chunk = &self.value;
+        let mut padded = [0u8; 4];
+        padded[..chunk.len()].copy_from_slice(chunk);
+        let val = u32::from_le_bytes(padded) & 0x7FFFFFFF;
+        let m31 = M31::from_u32_unchecked(val);
 
         let cs = self.cs();
 
         cs.insert_script(reconstruct_for_channel_draw_gadget, self.variables())
             .unwrap();
 
-        let reconstructed_str = StrVar::new_function_output(&cs, res.1).unwrap();
-        let reconstructed_m31 = M31Var::new_function_output(&cs, res.0).unwrap();
+        let reconstructed_str = StrVar::new_function_output(&cs, chunk.clone()).unwrap();
+        let reconstructed_m31 = M31Var::new_function_output(&cs, m31).unwrap();
 
         (reconstructed_m31, reconstructed_str)
     }
@@ -182,64 +158,24 @@ impl StrVarWithChannel for StrVar {
 
 fn reconstruct_for_channel_draw_gadget() -> Script {
     script! {
-        // handle 0x80 specially---it is the "negative zero", but most arithmetic opcodes refuse to work with it.
-        OP_DUP OP_PUSHBYTES_1 OP_LEFT OP_EQUAL
-        OP_IF
-            OP_DROP
-            OP_PUSHBYTES_4 OP_PUSHBYTES_0 OP_PUSHBYTES_0 OP_PUSHBYTES_0 OP_LEFT
-            OP_PUSHBYTES_0 OP_TOALTSTACK
-        OP_ELSE
-            OP_DUP OP_ABS
-            OP_DUP OP_TOALTSTACK
-
-            OP_SIZE 4 OP_LESSTHAN
-            OP_IF
-                OP_DUP OP_ROT
-                OP_EQUAL OP_TOALTSTACK
-
-                // stack: abs(a)
-                // altstack: abs(a), is_positive
-
-                OP_SIZE 2 OP_LESSTHAN OP_IF OP_PUSHBYTES_2 OP_PUSHBYTES_0 OP_PUSHBYTES_0 OP_CAT OP_ENDIF
-                OP_SIZE 3 OP_LESSTHAN OP_IF OP_PUSHBYTES_1 OP_PUSHBYTES_0 OP_CAT OP_ENDIF
-
-                OP_FROMALTSTACK
-                OP_IF
-                    OP_PUSHBYTES_1 OP_PUSHBYTES_0
-                OP_ELSE
-                    OP_PUSHBYTES_1 OP_LEFT
-                OP_ENDIF
-                OP_CAT
-            OP_ELSE
-                OP_DROP
-            OP_ENDIF
-            OP_FROMALTSTACK
-        OP_ENDIF
-
-        // stack: str
-        // altstack: abs(a)
+        // Input: raw 4-byte chunk
+        // Output (bottom to top): original chunk (StrVar), M31 value (M31Var)
+        OP_DUP
+        { vec![0xffu8, 0xff, 0xff, 0x7f] }
+        OP_AND
+        // Canonicalize: convert 4-byte StrRef to Val64 Num (trims trailing zeros)
+        OP_0 OP_ADD
     }
 }
 
 fn draw_hints_to_str_vars(cs: &ConstraintSystemRef, hint: DrawHints) -> Result<Vec<StrVar>> {
     let mut new_hints = vec![];
-    for hint_element in hint.0.iter() {
-        let data = match hint_element {
-            BitcoinIntegerEncodedData::NegativeZero => {
-                vec![0x80]
-            }
-            BitcoinIntegerEncodedData::Other(v) => {
-                let mut out = [0u8; 8];
-                let len = write_scriptint(&mut out, *v);
-                out[0..len].to_vec()
-            }
-        };
-        new_hints.push(StrVar::new_hint(cs, data)?);
+    for chunk in hint.0.iter() {
+        new_hints.push(StrVar::new_hint(cs, chunk.clone())?);
     }
     if !hint.1.is_empty() {
         new_hints.push(StrVar::new_hint(cs, hint.1)?);
     }
-
     Ok(new_hints)
 }
 

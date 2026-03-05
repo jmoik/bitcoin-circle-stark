@@ -3,11 +3,9 @@ use crate::treepp::*;
 use crate::utils::hash;
 use crate::OP_HINT;
 use anyhow::Result;
-use bitcoin::script::write_scriptint;
 use bitcoin_script_dsl::compiler::Compiler;
 use bitcoin_script_dsl::constraint_system::Element;
 use bitcoin_script_dsl::ldm::LDM;
-use bitcoin_scriptexec::utils::scriptint_vec;
 use covenants_gadgets::utils::stack_hash::StackHash;
 use bitcoin::taproot::LeafVersion;
 use covenants_gadgets::CovenantProgram;
@@ -87,10 +85,13 @@ pub fn compute_all_information() -> PlonkAllInformation {
     let hints = Hints::instance();
     let mut ldm = LDM::new();
 
-    let num_to_str = |v: i32| {
-        let mut out = [0u8; 8];
-        let len = write_scriptint(&mut out, v as i64);
-        out[0..len].to_vec()
+    let num_to_str = |v: i32| -> Vec<u8> {
+        if v == 0 {
+            return vec![];
+        }
+        let bytes = (v as u64).to_le_bytes();
+        let len = 8 - bytes.iter().rev().take_while(|&&b| b == 0).count();
+        bytes[..len].to_vec()
     };
 
     let mut outputs = vec![];
@@ -222,8 +223,16 @@ impl CovenantProgram for PlonkVerifierProgram {
 
     fn get_hash(state: &Self::State) -> Vec<u8> {
         assert_eq!(state.stack_hash.len(), 32);
+        let pc = state.pc as u64;
+        let pc_bytes = if pc == 0 {
+            vec![]
+        } else {
+            let bytes = pc.to_le_bytes();
+            let len = 8 - bytes.iter().rev().take_while(|&&b| b == 0).count();
+            bytes[..len].to_vec()
+        };
         let mut sha256 = Sha256::new();
-        Update::update(&mut sha256, &scriptint_vec(state.pc as i64));
+        Update::update(&mut sha256, &pc_bytes);
         Update::update(&mut sha256, &state.stack_hash);
         sha256.finalize().to_vec()
     }
@@ -338,13 +347,13 @@ mod test {
         // The integration assumes a fee rate of 7 sat/vByte.
         // Note that in many situations, the fee rate is only 2 sat/vByte.
 
-        let mut fees = vec![114555, 210434, 103439, 101759, 93233, 81704, 92834];
+        let mut fees = vec![137466, 252521, 124127, 122111, 111880, 98045, 111401];
 
         for _ in 0..8 {
-            fees.extend_from_slice(&[100926, 97300, 97167, 86891, 77679, 86863, 88865, 40467]);
+            fees.extend_from_slice(&[121112, 116760, 116601, 104270, 93215, 104236, 106638, 48561]);
         }
 
-        fees.push(49777);
+        fees.push(59733);
 
         println!(
             "total fee assuming 7 sat/vByte: {}",

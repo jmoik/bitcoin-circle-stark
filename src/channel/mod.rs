@@ -1,7 +1,5 @@
 use crate::utils::trim_m31;
-use bitcoin::script::PushBytesBuf;
 use sha2::{Digest, Sha256};
-use std::ops::Neg;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::QM31;
@@ -67,20 +65,10 @@ fn generate_hints(m: usize, extract: &[u8]) -> (Vec<M31>, DrawHints) {
     let mut res_hints = DrawHints::default();
 
     for i in 0..m {
-        let res = u32::from_le_bytes(<[u8; 4]>::try_from(&extract[i * 4..(i + 1) * 4]).unwrap())
-            & 0x7fffffff;
-
-        res_hints.0.push(if extract[(i + 1) * 4 - 1] & 0x80 != 0 {
-            if res == 0 {
-                BitcoinIntegerEncodedData::NegativeZero
-            } else {
-                BitcoinIntegerEncodedData::Other((res as i64).neg())
-            }
-        } else {
-            BitcoinIntegerEncodedData::Other(res as i64)
-        });
-
-        res_m31[i] = M31::from(res);
+        let chunk = &extract[i * 4..(i + 1) * 4];
+        let val = u32::from_le_bytes(<[u8; 4]>::try_from(chunk).unwrap()) & 0x7fffffff;
+        res_m31[i] = M31::from(val);
+        res_hints.0.push(chunk.to_vec());
     }
 
     if m % 8 != 0 {
@@ -90,35 +78,9 @@ fn generate_hints(m: usize, extract: &[u8]) -> (Vec<M31>, DrawHints) {
     (res_m31, res_hints)
 }
 
-/// Basic hint structure for extracting a single qm31 element.
-#[derive(Clone, Copy)]
-pub enum BitcoinIntegerEncodedData {
-    /// negative zero (will be represented by 0x80).
-    NegativeZero,
-    /// any Bitcoin integer other than the negative zero.
-    Other(i64),
-}
-
-impl Default for BitcoinIntegerEncodedData {
-    fn default() -> Self {
-        Self::Other(0)
-    }
-}
-
-impl Pushable for BitcoinIntegerEncodedData {
-    fn bitcoin_script_push(&self, builder: Builder) -> Builder {
-        match self {
-            BitcoinIntegerEncodedData::NegativeZero => {
-                builder.push_slice(PushBytesBuf::from([0x80]))
-            }
-            BitcoinIntegerEncodedData::Other(v) => builder.push_int(*v),
-        }
-    }
-}
-
 #[derive(Clone, Default)]
 /// Hints for drawing m31 elements.
-pub struct DrawHints(pub Vec<BitcoinIntegerEncodedData>, pub Vec<u8>);
+pub struct DrawHints(pub Vec<Vec<u8>>, pub Vec<u8>);
 
 impl Pushable for DrawHints {
     fn bitcoin_script_push(&self, mut builder: Builder) -> Builder {
@@ -131,7 +93,7 @@ impl Pushable for DrawHints {
         }
 
         for i in 0..n {
-            builder = self.0[i].bitcoin_script_push(builder);
+            builder = self.0[i].clone().bitcoin_script_push(builder);
         }
 
         if n % 8 != 0 {

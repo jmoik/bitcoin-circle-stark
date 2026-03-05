@@ -111,13 +111,13 @@ fn main() {
     let fee_rate = args.network.fee_rate();
     let cli_flag = args.network.cli_flag();
 
-    let mut fees = vec![114555, 210434, 103439, 101759, 93233, 81704, 92834];
+    let mut fees = vec![137466, 252521, 124127, 122111, 111880, 98045, 111401];
 
     for _ in 0..8 {
-        fees.extend_from_slice(&[100926, 97300, 97167, 86891, 77679, 86863, 88865, 40467]);
+        fees.extend_from_slice(&[121112, 116760, 116601, 104270, 93215, 104236, 106638, 48561]);
     }
 
-    fees.push(49777);
+    fees.push(59733);
 
     let amount =
         (fees.iter().sum::<usize>() as u64 + 10000) / 7 * fee_rate + 330 * 74 + 400 * fee_rate;

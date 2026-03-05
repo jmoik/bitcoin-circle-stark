@@ -7,7 +7,7 @@ use stwo_prover::core::circle::CirclePointIndex;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::qm31::QM31;
 
-/// Convert a m31 element to its Bitcoin integer representation.
+/// Convert a m31 element to its Val64 byte representation.
 pub fn num_to_bytes(v: M31) -> Vec<u8> {
     let mut bytes = Vec::new();
 
@@ -15,10 +15,6 @@ pub fn num_to_bytes(v: M31) -> Vec<u8> {
     while v > 0 {
         bytes.push((v & 0xff) as u8);
         v >>= 8;
-    }
-
-    if bytes.last().is_some() && bytes.last().unwrap() & 0x80 != 0 {
-        bytes.push(0);
     }
 
     bytes

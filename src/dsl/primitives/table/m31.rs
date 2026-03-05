@@ -253,51 +253,46 @@ impl M31MultGadget {
     }
 
     pub fn reduce() -> Script {
-        // Input:
-        //   c4, c3, c2, c1
-        //   h
+        // Input (bottom to top): c4, c3, c2, c1, q
+        //
+        // Computes a*b mod MOD where:
+        //   sum = c4<<24 + c3<<16 + c2<<8 + c1 = a*b (raw product in limbs)
+        //   result = sum + q - q<<31 = sum - q*MOD = a*b mod MOD
+        //
+        // The subtraction is deferred to the end to avoid negative
+        // intermediates (Val64 rejects OP_SUB with negative results).
 
         script! {
             OP_TOALTSTACK
             3 OP_ROLL
 
-            // pull q and save a copy in the altstack
+            // pull q and save TWO copies in altstack
             OP_FROMALTSTACK
-            OP_DUP OP_TOALTSTACK
+            OP_DUP OP_TOALTSTACK    // copy for q<<31 later
+            OP_TOALTSTACK            // copy for +q later
 
-            // q <<= 7
-            OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
-            OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
+            // stack: c3, c2, c1, c4
+            // alt: q (for <<31), q (for +)
 
-            // t = c4 - (q << 7)
-            OP_SUB
-
-            // stack:
-            //   c3, c2, c1, c4 - (q << 7)
-
+            // Build c4<<24 + c3<<16 + c2<<8 + c1
             OP_256MUL
-
             3 OP_ROLL OP_ADD
-
-            // stack:
-            //   c2, c1, (c4 - (q << 7)) << 8 + c3
-
             OP_256MUL
-
             OP_ROT OP_ADD
-
-            // stack:
-            //   c2, ((c4 - (q << 7)) << 8 + c3 + c1) << 8 + c2
-
             OP_256MUL
-
             OP_ADD
+
+            // + q
             OP_FROMALTSTACK OP_ADD
 
-            // enforce not negative
-            OP_DUP OP_DUP OP_ABS OP_EQUALVERIFY
+            // - q<<31
+            OP_FROMALTSTACK
+            OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
+            OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
+            OP_256MUL OP_256MUL OP_256MUL
+            OP_SUB
 
-            // enforce smaller than the limit
+            // enforce in range [0, 2^31 - 2]
             OP_DUP { (1i64 << 31) - 1 } OP_LESSTHAN OP_VERIFY
         }
     }

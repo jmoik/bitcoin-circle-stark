@@ -4,8 +4,10 @@ set -e
 # Configuration
 NETWORK="${1:-regtest}"
 FEATURES="${2:-}"  # Pass features: "gsr", "assume-op-mul", or "gsr,assume-op-mul"
-BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoin-cli"
-BITCOIND="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoind"
+# BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoin-cli"
+# BITCOIND="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoind"
+BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr/build/bin/bitcoin-cli"
+BITCOIND="/Users/julian/Code/bitcoin/gsr/build/bin/bitcoind"
 
 echo "=== Bitcoin Circle STARK Demo ==="
 echo "Network: $NETWORK"
@@ -37,11 +39,11 @@ OUTPUT=$(./target/debug/demo -n "$NETWORK")
 
 # Create wallet and fund it if not already done
 # Try to create wallet, ignore error if it already exists
-if ! bitcoin-cli -"$NETWORK" createwallet "starkdemo" 2>/dev/null; then
+if ! $BITCOIN_CLI -"$NETWORK" createwallet "starkdemo" 2>/dev/null; then
     echo "    Wallet 'starkdemo' already exists or failed to create, loading it..."
-    bitcoin-cli -"$NETWORK" loadwallet "starkdemo" 2>/dev/null || true
+    $BITCOIN_CLI -"$NETWORK" loadwallet "starkdemo" 2>/dev/null || true
 fi
-bitcoin-cli -"$NETWORK" generatetoaddress 301 "$(bitcoin-cli -"$NETWORK" getnewaddress)"
+$BITCOIN_CLI -"$NETWORK" generatetoaddress 301 "$($BITCOIN_CLI -"$NETWORK" getnewaddress)"
 
 # Parse the required BTC amount
 AMOUNT=$(echo "$OUTPUT" | grep -o 'prepare [0-9.]*' | grep -o '[0-9.]*')
@@ -57,13 +59,13 @@ echo "    Caboose address: ${CABOOSE_ADDR:0:20}..."
 
 # Create funding UTXO
 echo "[3/8] Creating funding UTXO..."
-WALLET_ADDR=$(bitcoin-cli -$NETWORK getnewaddress)
-FUNDING_TXID=$(bitcoin-cli -$NETWORK sendtoaddress "$WALLET_ADDR" "$AMOUNT")
+WALLET_ADDR=$($BITCOIN_CLI -$NETWORK getnewaddress)
+FUNDING_TXID=$($BITCOIN_CLI -$NETWORK sendtoaddress "$WALLET_ADDR" "$AMOUNT")
 echo "    Funding txid: $FUNDING_TXID"
 
 # Find the vout by looking at the transaction outputs
 # The funding UTXO is the one we control (sent to our wallet address)
-TX_INFO=$(bitcoin-cli -$NETWORK gettransaction "$FUNDING_TXID")
+TX_INFO=$($BITCOIN_CLI -$NETWORK gettransaction "$FUNDING_TXID")
 
 # Try to find vout for our wallet address in the details
 VOUT=$(echo "$TX_INFO" | grep -B5 "\"address\": \"$WALLET_ADDR\"" | grep '"vout"' | grep -oE '[0-9]+' | head -1)
@@ -79,20 +81,20 @@ echo "    Vout: $VOUT"
 
 # Create raw transaction (sequence 4294967293 = 0xfffffffd for RBF, required by covenant)
 echo "[4/8] Creating and signing initial transaction..."
-RAW_TX=$(bitcoin-cli -$NETWORK createrawtransaction \
+RAW_TX=$($BITCOIN_CLI -$NETWORK createrawtransaction \
     "[{\"txid\":\"$FUNDING_TXID\", \"vout\": $VOUT, \"sequence\": 4294967293}]" \
     "[{\"$PROGRAM_ADDR\":$PROGRAM_AMOUNT}, {\"$CABOOSE_ADDR\":0.0000033}]")
 
-SIGNED_TX=$(bitcoin-cli -$NETWORK signrawtransactionwithwallet "$RAW_TX" | grep '"hex"' | cut -d'"' -f4)
-INITIAL_TXID=$(bitcoin-cli -$NETWORK sendrawtransaction "$SIGNED_TX")
+SIGNED_TX=$($BITCOIN_CLI -$NETWORK signrawtransactionwithwallet "$RAW_TX" | grep '"hex"' | cut -d'"' -f4)
+INITIAL_TXID=$($BITCOIN_CLI -$NETWORK sendrawtransaction "$SIGNED_TX")
 echo "    Initial program txid: $INITIAL_TXID"
 
 # Mine a block to confirm initial transaction
 echo "[5/8] Mining initial confirmation block..."
-bitcoin-cli -$NETWORK generatetoaddress 1 "$(bitcoin-cli -$NETWORK getnewaddress)" > /dev/null
+$BITCOIN_CLI -$NETWORK generatetoaddress 1 "$($BITCOIN_CLI -$NETWORK getnewaddress)" > /dev/null
 
 # Verify the transaction is confirmed
-CONFIRMATIONS=$(bitcoin-cli -$NETWORK gettransaction "$INITIAL_TXID" | grep '"confirmations"' | grep -oE '[0-9]+' | head -1)
+CONFIRMATIONS=$($BITCOIN_CLI -$NETWORK gettransaction "$INITIAL_TXID" | grep '"confirmations"' | grep -oE '[0-9]+' | head -1)
 if [ "$CONFIRMATIONS" -lt 1 ]; then
     echo "    Error: Initial transaction not confirmed!"
     exit 1
@@ -117,7 +119,7 @@ BATCH_SIZE=5
 echo "[7/8] Broadcasting transactions (mining every $BATCH_SIZE txs)..."
 BROADCAST_COUNT=0
 FAILED=0
-MINER_ADDR=$(bitcoin-cli -$NETWORK getnewaddress)
+MINER_ADDR=$($BITCOIN_CLI -$NETWORK getnewaddress)
 
 # Disable exit-on-error for broadcast loop (we handle errors ourselves)
 set +e
@@ -127,7 +129,7 @@ for i in $(seq 1 "$TX_COUNT"); do
         TX_HEX=$(cat "$tx_file")
 
         # Broadcast the transaction
-        TXID=$(bitcoin-cli -"$NETWORK" sendrawtransaction "$TX_HEX" 2>&1)
+        TXID=$($BITCOIN_CLI -"$NETWORK" sendrawtransaction "$TX_HEX" 2>&1)
         RESULT=$?
 
         if [ $RESULT -eq 0 ]; then
@@ -142,7 +144,7 @@ for i in $(seq 1 "$TX_COUNT"); do
 
         # Mine a block every BATCH_SIZE transactions to keep cluster size small
         if [ $((BROADCAST_COUNT % BATCH_SIZE)) -eq 0 ]; then
-            bitcoin-cli -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
+            $BITCOIN_CLI -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
             echo "    --- Mined block (confirmed $BROADCAST_COUNT txs so far) ---"
         fi
     else
@@ -157,7 +159,7 @@ echo "    Successfully broadcast: $BROADCAST_COUNT/$TX_COUNT"
 
 # Mine final block to confirm remaining transactions
 echo "[8/8] Mining final confirmation block..."
-bitcoin-cli -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
+$BITCOIN_CLI -$NETWORK generatetoaddress 1 "$MINER_ADDR" > /dev/null
 echo "    Done"
 
 # Verify confirmations
@@ -168,8 +170,9 @@ echo "Total transactions: $TX_COUNT"
 echo "Broadcast to mempool: $BROADCAST_COUNT"
 
 # Show final mempool status
-MEMPOOL_SIZE=$(bitcoin-cli -$NETWORK getmempoolinfo | grep '"size"' | grep -oE '[0-9]+')
+MEMPOOL_SIZE=$($BITCOIN_CLI -$NETWORK getmempoolinfo | grep '"size"' | grep -oE '[0-9]+')
 echo "Mempool size: $MEMPOOL_SIZE (should be 0 after mining)"
 
 
 $BITCOIN_CLI -"$NETWORK" stop
+# 
