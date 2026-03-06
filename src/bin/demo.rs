@@ -1,7 +1,8 @@
 use bitcoin::consensus::Encodable;
 use bitcoin::hashes::{sha256d, Hash};
 use bitcoin::opcodes::all::{OP_PUSHBYTES_36, OP_RETURN};
-use bitcoin::{Address, Network, OutPoint, ScriptBuf, Txid, WScriptHash};
+use bitcoin::script::Instruction;
+use bitcoin::{Address, Network, OutPoint, Script, ScriptBuf, Txid, WScriptHash};
 use bitcoin_circle_stark::dsl::plonk::covenant::{
     compute_all_information, PlonkVerifierProgram, PlonkVerifierState, PLONK_ALL_INFORMATION,
 };
@@ -9,6 +10,7 @@ use clap::{Parser, ValueEnum};
 use colored::Colorize;
 use covenants_gadgets::test::SimulationInstruction;
 use covenants_gadgets::{get_script_pub_key, get_tx, CovenantInput, CovenantProgram, DUST_AMOUNT};
+use std::collections::BTreeMap;
 use std::io::Write;
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -61,9 +63,54 @@ struct Args {
 
     #[arg(short, long, value_enum, default_value = "signet")]
     network: NetworkArg,
+
+    /// Generate data/ from existing demo/ tx files
+    #[arg(long)]
+    generate_data: bool,
 }
 
 const OUTPUT_DIR: &str = "./demo";
+const DATA_DIR: &str = "./data";
+
+fn count_opcodes(script: &Script) -> BTreeMap<String, usize> {
+    let mut counts = BTreeMap::new();
+    for instruction in script.instructions() {
+        match instruction {
+            Ok(Instruction::Op(op)) => {
+                *counts.entry(format!("{:?}", op)).or_insert(0) += 1;
+            }
+            Ok(Instruction::PushBytes(data)) => {
+                let label = if data.is_empty() {
+                    "OP_PUSHBYTES_0".to_string()
+                } else {
+                    format!("OP_PUSHBYTES_{}", data.len())
+                };
+                *counts.entry(label).or_insert(0) += 1;
+            }
+            Err(_) => {
+                *counts.entry("INVALID".to_string()).or_insert(0) += 1;
+            }
+        }
+    }
+    counts
+}
+
+fn count_witness_opcodes(tx: &bitcoin::Transaction) -> BTreeMap<String, usize> {
+    let mut total = BTreeMap::new();
+    for input in &tx.input {
+        let witness = &input.witness;
+        let witness_len = witness.len();
+        if witness_len >= 2 {
+            // Taproot script-path spend: script is second-to-last witness element
+            let script_bytes = &witness[witness_len - 2];
+            let script = Script::from_bytes(script_bytes);
+            for (op, count) in count_opcodes(script) {
+                *total.entry(op).or_insert(0) += count;
+            }
+        }
+    }
+    total
+}
 
 fn print_state_info(state: &PlonkVerifierState, step: usize) {
     println!("\n{}", "=".repeat(50));
@@ -104,8 +151,84 @@ fn print_transaction_info(tx: &bitcoin::Transaction, _step: usize) {
     }
 }
 
+fn generate_data_from_demo() {
+    use bitcoin::consensus::Decodable;
+
+    let mut tx_files: Vec<_> = std::fs::read_dir(OUTPUT_DIR)
+        .expect("demo/ directory not found — run the full demo first")
+        .filter_map(|e| e.ok())
+        .filter(|e| {
+            e.file_name()
+                .to_str()
+                .map(|s| s.starts_with("tx-") && s.ends_with(".txt"))
+                .unwrap_or(false)
+        })
+        .collect();
+
+    tx_files.sort_by_key(|e| {
+        e.file_name()
+            .to_str()
+            .unwrap()
+            .strip_prefix("tx-")
+            .unwrap()
+            .strip_suffix(".txt")
+            .unwrap()
+            .parse::<u32>()
+            .unwrap()
+    });
+
+    println!(
+        "Found {} transaction files in {}/",
+        tx_files.len(),
+        OUTPUT_DIR
+    );
+    std::fs::create_dir_all(DATA_DIR).unwrap();
+
+    for (i, entry) in tx_files.iter().enumerate() {
+        let tx_hex = std::fs::read_to_string(entry.path()).unwrap();
+        let tx_bytes = hex::decode(tx_hex.trim()).unwrap();
+        let tx: bitcoin::Transaction =
+            bitcoin::Transaction::consensus_decode(&mut tx_bytes.as_slice()).unwrap();
+
+        let weight = tx.weight();
+        let size = tx_bytes.len();
+        let vsize = weight.to_vbytes_ceil();
+        let opcode_counts = count_witness_opcodes(&tx);
+
+        let mut data_file =
+            std::fs::File::create(format!("{}/tx-{}.txt", DATA_DIR, i + 1)).unwrap();
+        writeln!(data_file, "Transaction {}", i + 1).unwrap();
+        writeln!(data_file, "Weight: {} WU", weight).unwrap();
+        writeln!(data_file, "Size: {} bytes", size).unwrap();
+        writeln!(data_file, "Virtual size: {} vbytes", vsize).unwrap();
+        writeln!(data_file).unwrap();
+        writeln!(data_file, "Opcode counts:").unwrap();
+        let mut sorted_ops: Vec<_> = opcode_counts.into_iter().collect();
+        sorted_ops.sort_by(|a, b| b.1.cmp(&a.1));
+        for (op, count) in &sorted_ops {
+            writeln!(data_file, "  {}: {}", op, count).unwrap();
+        }
+
+        println!(
+            "  tx-{}: weight={} WU, size={} bytes, vsize={} vbytes, {} unique opcodes",
+            i + 1,
+            weight,
+            size,
+            vsize,
+            sorted_ops.len()
+        );
+    }
+
+    println!("\nTransaction data written to {}/", DATA_DIR);
+}
+
 fn main() {
     let args = Args::parse();
+
+    if args.generate_data {
+        generate_data_from_demo();
+        return;
+    }
 
     let network = args.network.to_bitcoin_network();
     let fee_rate = args.network.fee_rate();
@@ -285,19 +408,48 @@ fn main() {
             old_tx_outpoint1 = tx_template.tx.input[0].previous_output;
         }
 
-        // Create directory if it doesn't exist
+        // Create directories if they don't exist
         std::fs::create_dir_all(OUTPUT_DIR).unwrap();
+        std::fs::create_dir_all(DATA_DIR).unwrap();
 
         for (i, tx) in txs.iter().enumerate() {
             let mut bytes = vec![];
             tx.consensus_encode(&mut bytes).unwrap();
 
             // Write the transaction to a file
+            let size = bytes.len();
             let mut fs = std::fs::File::create(format!("{}/tx-{}.txt", OUTPUT_DIR, i + 1)).unwrap();
             fs.write_all(hex::encode(bytes).as_bytes()).unwrap();
+
+            // Write transaction data (weight, size, opcode counts)
+            let weight = tx.weight();
+            let vsize = weight.to_vbytes_ceil();
+            let opcode_counts = count_witness_opcodes(tx);
+
+            let mut data_file =
+                std::fs::File::create(format!("{}/tx-{}.txt", DATA_DIR, i + 1)).unwrap();
+            writeln!(data_file, "Transaction {}", i + 1).unwrap();
+            writeln!(data_file, "Weight: {} WU", weight).unwrap();
+            writeln!(data_file, "Size: {} bytes", size).unwrap();
+            writeln!(data_file, "Virtual size: {} vbytes", vsize).unwrap();
+            writeln!(data_file).unwrap();
+            writeln!(data_file, "Opcode counts:").unwrap();
+            // Sort by count descending for readability
+            let mut sorted_ops: Vec<_> = opcode_counts.into_iter().collect();
+            sorted_ops.sort_by(|a, b| b.1.cmp(&a.1));
+            for (op, count) in &sorted_ops {
+                writeln!(data_file, "  {}: {}", op, count).unwrap();
+            }
         }
 
         println!("================= INSTRUCTIONS =================");
-        println!("All 72 transactions have been generated and stored in the current directory.");
+        println!(
+            "All 72 transactions have been generated and stored in the {} directory.",
+            OUTPUT_DIR
+        );
+        println!(
+            "Transaction data (weight, size, opcodes) stored in the {} directory.",
+            DATA_DIR
+        );
     }
 }

@@ -12,3 +12,5 @@ target/
 .idea
 
 demo/
+data/
+scripts/
