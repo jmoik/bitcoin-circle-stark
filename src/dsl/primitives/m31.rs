@@ -71,6 +71,22 @@ impl Add for &M31Var {
     }
 }
 
+#[cfg(feature = "assume-gsr")]
+impl Add for &M31Var {
+    type Output = M31Var;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let res = self.value + rhs.value;
+
+        let cs = self.cs.and(&rhs.cs);
+
+        cs.insert_script(m31_add_op_mod_gadget, [self.variable, rhs.variable])
+            .unwrap();
+
+        M31Var::new_variable(&cs, res, AllocationMode::FunctionOutput).unwrap()
+    }
+}
+
 impl Sub for &M31Var {
     type Output = M31Var;
 
@@ -102,7 +118,7 @@ impl Mul for &M31Var {
     }
 }
 
-#[cfg(feature = "assume-op-mul")]
+#[cfg(feature = "assume-gsr")]
 impl Mul for &M31Var {
     type Output = M31Var;
 
@@ -111,15 +127,8 @@ impl Mul for &M31Var {
 
         let cs = self.cs.and(&rhs.cs);
 
-        // Compute q = floor(a*b / MOD) as a hint
-        let q = (self.value.0 as u64 * rhs.value.0 as u64) / M31_MOD as u64;
-        let q_var = M31Var::new_hint(&cs, M31::from_u32_unchecked(q as u32)).unwrap();
-
-        cs.insert_script(
-            m31_mul_op_mul_gadget,
-            [self.variable, rhs.variable, q_var.variable],
-        )
-        .unwrap();
+        cs.insert_script(m31_mul_op_mul_gadget, [self.variable, rhs.variable])
+            .unwrap();
 
         M31Var::new_function_output(&cs, res).unwrap()
     }
@@ -160,6 +169,22 @@ impl Neg for &M31Var {
         let cs = self.cs();
 
         cs.insert_script(rust_bitcoin_m31::m31_neg, [self.variable])
+            .unwrap();
+
+        M31Var::new_function_output(&cs, res).unwrap()
+    }
+}
+
+#[cfg(feature = "assume-gsr")]
+impl Neg for &M31Var {
+    type Output = M31Var;
+
+    fn neg(self) -> Self::Output {
+        let res = -self.value;
+
+        let cs = self.cs();
+
+        cs.insert_script(m31_neg_op_mod_gadget, [self.variable])
             .unwrap();
 
         M31Var::new_function_output(&cs, res).unwrap()
@@ -229,21 +254,44 @@ impl M31Var {
     }
 }
 
-/// OP_MUL-based M31 multiplication gadget.
+/// OP_MUL + OP_MOD based M31 multiplication gadget.
 ///
+/// Stack input:  a, b
+/// Stack output: r = (a*b) % MOD
 #[cfg(feature = "assume-gsr")]
 fn m31_mul_op_mul_gadget() -> Script {
     script! {
-        // Stack: a, b, q
-        OP_DUP { M31_MOD }     // a, b, q, q, MOD
-        OP_MUL                  // a, b, q, q*MOD
-        OP_TOALTSTACK           // a, b, q        alt: q*MOD
-        OP_DROP                 // a, b
-        OP_MUL                  // a*b             alt: q*MOD
-        OP_FROMALTSTACK         // a*b, q*MOD
-        OP_SUB                  // r = a*b - q*MOD
-        OP_DUP { M31_MOD }     // r, r, MOD
-        OP_LESSTHAN OP_VERIFY  // r  (verified r < MOD)
+        OP_MUL        // a*b
+        { M31_MOD }   // a*b, MOD
+        OP_MOD        // r = (a*b) % MOD
+    }
+}
+
+/// OP_MOD based M31 addition gadget.
+///
+/// Stack input:  a, b  (both in [0, MOD))
+/// Stack output: (a+b) % MOD
+#[cfg(feature = "assume-gsr")]
+fn m31_add_op_mod_gadget() -> Script {
+    script! {
+        OP_ADD
+        { M31_MOD }
+        OP_MOD
+    }
+}
+
+/// OP_MOD based M31 negation gadget.
+///
+/// Stack input:  a  (in [0, MOD))
+/// Stack output: (-a) % MOD = (MOD-a) % MOD
+#[cfg(feature = "assume-gsr")]
+fn m31_neg_op_mod_gadget() -> Script {
+    script! {
+        { M31_MOD }
+        OP_SWAP
+        OP_SUB          // MOD-a (always >= 0 since a < MOD)
+        { M31_MOD }
+        OP_MOD          // handles neg(0) = MOD -> 0
     }
 }
 
@@ -265,17 +313,8 @@ fn m31_trim_gadget(_: &mut Stack, options: &Options) -> Result<Script> {
         Ok(script! {})
     } else {
         Ok(script! {
-            OP_TOALTSTACK
-            { 1 << logn }
-            for _ in logn..(31 - 1) {
-                OP_DUP OP_DUP OP_ADD
-            }
-            OP_FROMALTSTACK
-            for _ in logn..31 {
-                OP_SWAP
-                OP_2DUP OP_GREATERTHANOREQUAL
-                OP_IF OP_SUB OP_ELSE OP_DROP OP_ENDIF
-            }
+            { 1u32 << logn }
+            OP_MOD
         })
     }
 }
@@ -288,9 +327,6 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    #[cfg(not(feature = "assume-gsr"))]
-    use bitcoin_script_dsl::test_program;
-    #[cfg(feature = "assume-gsr")]
     use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
