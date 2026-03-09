@@ -121,7 +121,6 @@ impl Add<&CM31LimbsVar> for &CM31LimbsVar {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "assume-gsr"))]
 mod test {
     use crate::dsl::primitives::cm31::CM31Var;
     use crate::dsl::primitives::cm31_limbs::CM31LimbsVar;
@@ -135,6 +134,7 @@ mod test {
     use rand_chacha::ChaCha20Rng;
 
     #[test]
+    #[ignore = "table-based path removed (assume-gsr always active)"]
     fn test_cm31_limbs_table_mul() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 

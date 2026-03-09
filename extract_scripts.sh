@@ -1,14 +1,7 @@
 #!/bin/bash
 set -e
 
-# Optional: pass features to match how the demo was built
-# Usage:
-#   ./extract_scripts.sh                  # default (no features)
-#   ./extract_scripts.sh assume-gsr    # with assume-gsr feature
-FEATURES="${1:-}"
-
-# Derive variant name for output subdirectory
-VARIANT="${FEATURES:-default}"
+VARIANT="default"
 
 echo "Building extract_scripts..."
 cargo build --bin extract_scripts --quiet

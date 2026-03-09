@@ -234,16 +234,12 @@ fn main() {
     let fee_rate = args.network.fee_rate();
     let cli_flag = args.network.cli_flag();
 
-    let mut fees = vec![137466, 252521, 124127, 122111, 111880, 98045, 111401];
+    let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
 
-    for _ in 0..8 {
-        fees.extend_from_slice(&[121112, 116760, 116601, 104270, 93215, 104236, 106638, 48561]);
-    }
+    let vbytes = (all_information.script.len() / 4 + 200) as u64;
+    let fee_at_ref_rate = vbytes * 7;
 
-    fees.push(59733);
-
-    let amount =
-        (fees.iter().sum::<usize>() as u64 + 10000) / 7 * fee_rate + 330 * 74 + 400 * fee_rate;
+    let amount = (fee_at_ref_rate + 10000) / 7 * fee_rate + 330 * 3 + 400 * fee_rate;
     let amount_display = (((amount as f64) / 1000.0 / 1000.0 / 100.0) * 10000.0).ceil() / 10000.0;
     let actual_amount = (amount_display * 100.0 * 1000.0 * 1000.0) as u64;
     let rest = actual_amount - 330 - 400 * fee_rate;
@@ -321,130 +317,95 @@ fn main() {
         funding_txid.copy_from_slice(&hex::decode(args.funding_txid.unwrap()).unwrap());
         funding_txid.reverse();
 
-        let mut old_state = PlonkVerifierProgram::new();
-        let mut old_randomizer = args.randomizer;
-        let mut old_balance = rest;
-        let mut old_txid =
-            Txid::from_raw_hash(*sha256d::Hash::from_bytes_ref(&initial_program_txid));
+        let old_state = PlonkVerifierProgram::new();
+        let old_randomizer = args.randomizer;
+        let old_balance = rest;
+        let old_txid = Txid::from_raw_hash(*sha256d::Hash::from_bytes_ref(&initial_program_txid));
 
-        let mut old_tx_outpoint1 = OutPoint {
+        let old_tx_outpoint1 = OutPoint {
             txid: Txid::from_raw_hash(*sha256d::Hash::from_bytes_ref(&funding_txid)),
             vout: args.funding_tx_vout,
         };
 
-        let mut txs = Vec::new();
-
-        let get_instruction = |old_state: &PlonkVerifierState| {
-            let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
-
-            if old_state.pc < fees.len() {
-                Some(SimulationInstruction::<PlonkVerifierProgram> {
-                    program_index: old_state.pc,
-                    program_input: all_information.get_input(old_state.pc),
-                })
-            } else {
-                unimplemented!()
-            }
+        let next = SimulationInstruction::<PlonkVerifierProgram> {
+            program_index: 0,
+            program_input: all_information.get_input(),
         };
 
-        for step in 0..72 {
-            let next = get_instruction(&old_state).unwrap();
+        println!("\n{}", "=".repeat(80));
+        println!("{}", "Processing Transaction".yellow());
+        println!("{}", "=".repeat(80));
 
-            println!("\n{}", "=".repeat(80));
-            println!(
-                "{}",
-                format!("Processing Transaction {} of 72", step + 1).yellow()
-            );
-            println!("{}", "=".repeat(80));
+        print_state_info(&old_state, 1);
 
-            print_state_info(&old_state, step + 1);
+        let step_fee = (fee_at_ref_rate as f64 / 7.0 * (fee_rate as f64)).ceil() as u64;
+        let new_balance = old_balance - step_fee - DUST_AMOUNT;
 
-            let step_fee = (fees[old_state.pc] as f64 / 7.0 * (fee_rate as f64)).ceil() as u64;
-            let mut new_balance = old_balance;
-            new_balance -= step_fee;
-            new_balance -= DUST_AMOUNT;
+        let info = CovenantInput {
+            old_randomizer,
+            old_balance,
+            old_txid,
+            input_outpoint1: old_tx_outpoint1,
+            input_outpoint2: None,
+            optional_deposit_input: None,
+            new_balance,
+        };
 
-            let info = CovenantInput {
-                old_randomizer,
-                old_balance,
-                old_txid,
-                input_outpoint1: old_tx_outpoint1,
-                input_outpoint2: None,
-                optional_deposit_input: None,
-                new_balance,
-            };
+        print_covenant_input(&info, 1);
 
-            print_covenant_input(&info, step + 1);
+        let new_state =
+            PlonkVerifierProgram::run(next.program_index, &old_state, &next.program_input).unwrap();
 
-            let new_state =
-                PlonkVerifierProgram::run(next.program_index, &old_state, &next.program_input)
-                    .unwrap();
+        println!("\nState Transition:");
+        println!("Old PC: {} -> New PC: {}", old_state.pc, new_state.pc);
+        println!(
+            "Old Stack Size: {} -> New Stack Size: {}",
+            old_state.stack.len(),
+            new_state.stack.len()
+        );
 
-            println!("\nState Transition:");
-            println!("Old PC: {} -> New PC: {}", old_state.pc, new_state.pc);
-            println!(
-                "Old Stack Size: {} -> New Stack Size: {}",
-                old_state.stack.len(),
-                new_state.stack.len()
-            );
+        let (tx_template, _randomizer) = get_tx::<PlonkVerifierProgram>(
+            &info,
+            next.program_index,
+            &old_state,
+            &new_state,
+            &next.program_input,
+        );
 
-            let (tx_template, randomizer) = get_tx::<PlonkVerifierProgram>(
-                &info,
-                next.program_index,
-                &old_state,
-                &new_state,
-                &next.program_input,
-            );
+        print_transaction_info(&tx_template.tx, 1);
 
-            print_transaction_info(&tx_template.tx, step + 1);
+        let tx = &tx_template.tx;
 
-            txs.push(tx_template.tx.clone());
-
-            old_state = new_state;
-            old_randomizer = randomizer;
-            old_balance = new_balance;
-            old_txid = tx_template.tx.compute_txid();
-
-            old_tx_outpoint1 = tx_template.tx.input[0].previous_output;
-        }
-
-        // Create directories if they don't exist
         std::fs::create_dir_all(OUTPUT_DIR).unwrap();
         std::fs::create_dir_all(DATA_DIR).unwrap();
 
-        for (i, tx) in txs.iter().enumerate() {
-            let mut bytes = vec![];
-            tx.consensus_encode(&mut bytes).unwrap();
+        let mut bytes = vec![];
+        tx.consensus_encode(&mut bytes).unwrap();
 
-            // Write the transaction to a file
-            let size = bytes.len();
-            let mut fs = std::fs::File::create(format!("{}/tx-{}.txt", OUTPUT_DIR, i + 1)).unwrap();
-            fs.write_all(hex::encode(bytes).as_bytes()).unwrap();
+        let size = bytes.len();
+        let mut fs = std::fs::File::create(format!("{}/tx-1.txt", OUTPUT_DIR)).unwrap();
+        fs.write_all(hex::encode(bytes).as_bytes()).unwrap();
 
-            // Write transaction data (weight, size, opcode counts)
-            let weight = tx.weight();
-            let vsize = weight.to_vbytes_ceil();
-            let opcode_counts = count_witness_opcodes(tx);
+        let weight = tx.weight();
+        let vsize = weight.to_vbytes_ceil();
+        let opcode_counts = count_witness_opcodes(tx);
 
-            let mut data_file =
-                std::fs::File::create(format!("{}/tx-{}.txt", DATA_DIR, i + 1)).unwrap();
-            writeln!(data_file, "Transaction {}", i + 1).unwrap();
-            writeln!(data_file, "Weight: {} WU", weight).unwrap();
-            writeln!(data_file, "Size: {} bytes", size).unwrap();
-            writeln!(data_file, "Virtual size: {} vbytes", vsize).unwrap();
-            writeln!(data_file).unwrap();
-            writeln!(data_file, "Opcode counts:").unwrap();
-            // Sort by count descending for readability
-            let mut sorted_ops: Vec<_> = opcode_counts.into_iter().collect();
-            sorted_ops.sort_by(|a, b| b.1.cmp(&a.1));
-            for (op, count) in &sorted_ops {
-                writeln!(data_file, "  {}: {}", op, count).unwrap();
-            }
+        let mut data_file = std::fs::File::create(format!("{}/tx-1.txt", DATA_DIR)).unwrap();
+        writeln!(data_file, "Transaction 1").unwrap();
+        writeln!(data_file, "Weight: {} WU", weight).unwrap();
+        writeln!(data_file, "Size: {} bytes", size).unwrap();
+        writeln!(data_file, "Virtual size: {} vbytes", vsize).unwrap();
+        writeln!(data_file).unwrap();
+        writeln!(data_file, "Opcode counts:").unwrap();
+        let mut sorted_ops: Vec<_> = opcode_counts.into_iter().collect();
+        sorted_ops.sort_by(|a, b| b.1.cmp(&a.1));
+        for (op, count) in &sorted_ops {
+            writeln!(data_file, "  {}: {}", op, count).unwrap();
         }
 
         println!("================= INSTRUCTIONS =================");
         println!(
-            "All 72 transactions have been generated and stored in the {} directory.",
+            "Transaction has been generated and stored in the {} directory.",
             OUTPUT_DIR
         );
         println!(

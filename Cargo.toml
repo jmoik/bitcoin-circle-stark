@@ -34,7 +34,7 @@ default-features = false
 features = ["user-hooks"]
 
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)', 'cfg(feature, values("assume-gsr"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(tarpaulin_include)'] }
 
 [profile.dev]
 opt-level = 3
@@ -44,9 +44,8 @@ lto = true
 
 [features]
 profiler = ["bitcoin-scriptexec/profiler"]
-assume-gsr = []
 
-# Override transitive git dependencies from Bitcoin-Wildlife-Sanctuary with jmoik forks
+# Override transitive git dependencies from Bitcoin-Wildlife-Sanctuary with jmoik forks git dependencies from Bitcoin-Wildlife-Sanctuary with jmoik forks
 [patch."https://github.com/Bitcoin-Wildlife-Sanctuary/rust-bitcoin-script"]
 bitcoin-script = { git = "https://github.com/jmoik/rust-bitcoin-script", branch = "gsr" }
 

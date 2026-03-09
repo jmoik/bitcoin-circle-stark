@@ -1,8 +1,4 @@
-#[cfg(not(feature = "assume-gsr"))]
-use super::cm31_limbs::CM31LimbsVar;
 use super::m31::M31Var;
-#[cfg(not(feature = "assume-gsr"))]
-use super::m31_limbs::M31LimbsVar;
 use super::table::TableVar;
 use anyhow::Result;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
@@ -94,28 +90,6 @@ impl Sub<&M31Var> for &CM31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Mul for &CM31Var {
-    type Output = CM31Var;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let res = self.value().unwrap() * rhs.value().unwrap();
-        let cs = self.cs().and(&rhs.cs());
-
-        cs.insert_script(
-            rust_bitcoin_m31::cm31_mul,
-            self.variables()
-                .iter()
-                .chain(rhs.variables().iter())
-                .copied(),
-        )
-        .unwrap();
-
-        CM31Var::new_function_output(&cs, res).unwrap()
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Mul for &CM31Var {
     type Output = CM31Var;
 
@@ -134,21 +108,6 @@ impl Mul for &CM31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
-    type Output = CM31Var;
-
-    fn mul(self, rhs: (&TableVar, &CM31Var)) -> Self::Output {
-        let table = rhs.0;
-        let rhs = rhs.1;
-
-        let self_limbs = CM31LimbsVar::from(self);
-        let rhs_limbs = CM31LimbsVar::from(rhs);
-        &self_limbs * (table, &rhs_limbs)
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
     type Output = CM31Var;
 
@@ -158,25 +117,6 @@ impl Mul<(&TableVar, &CM31Var)> for &CM31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Mul<(&TableVar, &M31Var)> for &CM31Var {
-    type Output = CM31Var;
-
-    fn mul(self, rhs: (&TableVar, &M31Var)) -> Self::Output {
-        let table = rhs.0;
-        let rhs = rhs.1;
-
-        let self_limbs = CM31LimbsVar::from(self);
-        let rhs_limbs = M31LimbsVar::from(rhs);
-
-        let real = &self_limbs.real * (table, &rhs_limbs);
-        let imag = &self_limbs.imag * (table, &rhs_limbs);
-
-        CM31Var { real, imag }
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Mul<(&TableVar, &M31Var)> for &CM31Var {
     type Output = CM31Var;
 
@@ -212,19 +152,6 @@ impl CM31Var {
         self.imag.is_zero();
     }
 
-    #[cfg(not(feature = "assume-gsr"))]
-    pub fn inverse(&self, table: &TableVar) -> Self {
-        let cs = self.cs();
-        let res = self.value().unwrap().inverse();
-
-        let res_var = CM31Var::new_hint(&cs, res).unwrap();
-        let expected_one = &res_var * (table, self);
-        expected_one.is_one();
-
-        res_var
-    }
-
-    #[cfg(feature = "assume-gsr")]
     pub fn inverse(&self, _table: &TableVar) -> Self {
         self.inverse_without_table()
     }
@@ -256,9 +183,6 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    #[cfg(not(feature = "assume-gsr"))]
-    use bitcoin_script_dsl::test_program;
-    #[cfg(feature = "assume-gsr")]
     use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;

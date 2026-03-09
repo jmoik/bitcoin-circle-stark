@@ -2,8 +2,6 @@ use crate::treepp::pushable::{Builder, Pushable};
 use anyhow::Result;
 use bitcoin_script_dsl::bvar::{AllocVar, AllocationMode, BVar};
 use bitcoin_script_dsl::constraint_system::ConstraintSystemRef;
-#[cfg(not(feature = "assume-gsr"))]
-use bitcoin_script_dsl::constraint_system::Element;
 use std::ops::Index;
 use std::sync::OnceLock;
 
@@ -69,12 +67,6 @@ impl BVar for TableVar {
         self.variables.clone()
     }
 
-    #[cfg(not(feature = "assume-gsr"))]
-    fn length() -> usize {
-        513
-    }
-
-    #[cfg(feature = "assume-gsr")]
     fn length() -> usize {
         0
     }
@@ -94,22 +86,6 @@ impl AllocVar for TableVar {
         Self::new_constant(cs, data)
     }
 
-    #[cfg(not(feature = "assume-gsr"))]
-    fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
-        let table = get_table();
-
-        let mut variables = vec![];
-        for &elem in table.data.iter().rev() {
-            variables.push(cs.alloc(Element::Num(elem as i32), AllocationMode::Constant)?);
-        }
-
-        Ok(Self {
-            variables,
-            cs: cs.clone(),
-        })
-    }
-
-    #[cfg(feature = "assume-gsr")]
     fn new_constant(cs: &ConstraintSystemRef, _: <Self as BVar>::Value) -> Result<Self> {
         // With OP_MUL, no lookup table needed — allocate nothing
         Ok(Self {

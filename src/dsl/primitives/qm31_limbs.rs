@@ -70,7 +70,6 @@ impl Mul<(&TableVar, &QM31LimbsVar)> for &QM31LimbsVar {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "assume-gsr"))]
 mod test {
     use crate::dsl::primitives::qm31::QM31Var;
     use crate::dsl::primitives::qm31_limbs::QM31LimbsVar;
@@ -84,6 +83,7 @@ mod test {
     use rand_chacha::ChaCha20Rng;
 
     #[test]
+    #[ignore = "table-based path removed (assume-gsr always active)"]
     fn test_qm31_limbs_table_mul() {
         let mut prng = ChaCha20Rng::seed_from_u64(0);
 

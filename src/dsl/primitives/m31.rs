@@ -1,5 +1,3 @@
-#[cfg(not(feature = "assume-gsr"))]
-use super::m31_limbs::{m31_to_limbs_gadget, M31LimbsVar};
 use super::table::TableVar;
 use crate::treepp::*;
 use anyhow::Result;
@@ -11,7 +9,6 @@ use std::ops::{Add, Mul, Neg, Sub};
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::FieldExpOps;
 
-#[cfg(feature = "assume-gsr")]
 const M31_MOD: u32 = (1u32 << 31) - 1;
 
 #[derive(Debug, Clone)]
@@ -55,23 +52,6 @@ impl AllocVar for M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Add for &M31Var {
-    type Output = M31Var;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        let res = self.value + rhs.value;
-
-        let cs = self.cs.and(&rhs.cs);
-
-        cs.insert_script(rust_bitcoin_m31::m31_add, [self.variable, rhs.variable])
-            .unwrap();
-
-        M31Var::new_variable(&cs, res, AllocationMode::FunctionOutput).unwrap()
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Add for &M31Var {
     type Output = M31Var;
 
@@ -102,23 +82,6 @@ impl Sub for &M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Mul for &M31Var {
-    type Output = M31Var;
-
-    fn mul(self, rhs: Self) -> Self::Output {
-        let res = self.value * rhs.value;
-
-        let cs = self.cs.and(&rhs.cs);
-
-        cs.insert_script(rust_bitcoin_m31::m31_mul, [self.variable, rhs.variable])
-            .unwrap();
-
-        M31Var::new_function_output(&cs, res).unwrap()
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Mul for &M31Var {
     type Output = M31Var;
 
@@ -134,21 +97,6 @@ impl Mul for &M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Mul<(&TableVar, &M31Var)> for &M31Var {
-    type Output = M31Var;
-
-    fn mul(self, rhs: (&TableVar, &M31Var)) -> Self::Output {
-        let table = rhs.0;
-        let rhs = rhs.1;
-
-        let self_limbs = M31LimbsVar::from(self);
-        let rhs_limbs = M31LimbsVar::from(rhs);
-        &self_limbs * (table, &rhs_limbs)
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Mul<(&TableVar, &M31Var)> for &M31Var {
     type Output = M31Var;
 
@@ -159,23 +107,6 @@ impl Mul<(&TableVar, &M31Var)> for &M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-gsr"))]
-impl Neg for &M31Var {
-    type Output = M31Var;
-
-    fn neg(self) -> Self::Output {
-        let res = -self.value;
-
-        let cs = self.cs();
-
-        cs.insert_script(rust_bitcoin_m31::m31_neg, [self.variable])
-            .unwrap();
-
-        M31Var::new_function_output(&cs, res).unwrap()
-    }
-}
-
-#[cfg(feature = "assume-gsr")]
 impl Neg for &M31Var {
     type Output = M31Var;
 
@@ -206,27 +137,6 @@ impl M31Var {
             .unwrap();
     }
 
-    #[cfg(not(feature = "assume-gsr"))]
-    pub fn inverse(&self, table: &TableVar) -> Self {
-        let self_limbs = M31LimbsVar::from(self);
-        let inv_limbs = self_limbs.inverse(table);
-
-        let cs = self.cs.and(&table.cs);
-        let inv = M31Var::new_hint(&cs, self.value.inverse()).unwrap();
-
-        cs.insert_script(
-            m31_to_limbs_gadget,
-            inv.variables()
-                .iter()
-                .chain(inv_limbs.variables().iter())
-                .copied(),
-        )
-        .unwrap();
-
-        inv
-    }
-
-    #[cfg(feature = "assume-gsr")]
     pub fn inverse(&self, _table: &TableVar) -> Self {
         // With OP_MUL, no need for limbs/table — just hint and verify
         self.inverse_without_table()
@@ -258,7 +168,6 @@ impl M31Var {
 ///
 /// Stack input:  a, b
 /// Stack output: r = (a*b) % MOD
-#[cfg(feature = "assume-gsr")]
 fn m31_mul_op_mul_gadget() -> Script {
     script! {
         OP_MUL        // a*b
@@ -271,7 +180,6 @@ fn m31_mul_op_mul_gadget() -> Script {
 ///
 /// Stack input:  a, b  (both in [0, MOD))
 /// Stack output: (a+b) % MOD
-#[cfg(feature = "assume-gsr")]
 fn m31_add_op_mod_gadget() -> Script {
     script! {
         OP_ADD
@@ -284,7 +192,6 @@ fn m31_add_op_mod_gadget() -> Script {
 ///
 /// Stack input:  a  (in [0, MOD))
 /// Stack output: (-a) % MOD = (MOD-a) % MOD
-#[cfg(feature = "assume-gsr")]
 fn m31_neg_op_mod_gadget() -> Script {
     script! {
         { M31_MOD }

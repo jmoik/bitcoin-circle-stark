@@ -58,29 +58,25 @@ impl From<PlonkVerifierState> for Script {
 }
 
 pub struct PlonkAllInformation {
-    pub scripts: Vec<Script>,
-    pub witnesses: Vec<Witness>,
-    pub outputs: Vec<Witness>,
+    pub script: Script,
+    pub witness: Witness,
+    pub output: Witness,
 }
 
 pub static PLONK_ALL_INFORMATION: OnceLock<PlonkAllInformation> = OnceLock::new();
 
 impl PlonkAllInformation {
-    pub fn get_input(&self, idx: usize) -> PlonkVerifierInput {
+    pub fn get_input(&self) -> PlonkVerifierInput {
         PlonkVerifierInput {
-            stack: if idx == 0 {
-                vec![]
-            } else {
-                self.outputs[idx - 1].clone()
-            },
-            hints: self.witnesses[idx].clone(),
+            stack: vec![],
+            hints: self.witness.clone(),
         }
     }
 }
 
 pub fn compute_all_information() -> PlonkAllInformation {
-    let mut scripts = vec![];
-    let mut witnesses = vec![];
+    let mut individual_scripts = vec![];
+    let mut individual_witnesses = vec![];
 
     let hints = Hints::instance();
     let mut ldm = LDM::new();
@@ -94,7 +90,22 @@ pub fn compute_all_information() -> PlonkAllInformation {
         bytes[..len].to_vec()
     };
 
-    let mut outputs = vec![];
+    let extract_witness = |program: &bitcoin_script_dsl::compiler::CompiledProgram,
+                           num_to_str: &dyn Fn(i32) -> Vec<u8>|
+     -> Witness {
+        let mut witness = vec![];
+        for entry in program.hint.iter() {
+            match &entry {
+                Element::Num(v) => {
+                    witness.push(num_to_str(*v));
+                }
+                Element::Str(v) => {
+                    witness.push(v.clone());
+                }
+            }
+        }
+        witness
+    };
 
     for f in [
         super::part1_fiat_shamir1::generate_cs,
@@ -107,28 +118,9 @@ pub fn compute_all_information() -> PlonkAllInformation {
     ] {
         let cs = f(&hints, &mut ldm).unwrap();
         let program = Compiler::compile(cs).unwrap();
-
-        scripts.push(program.script);
-
-        let mut witness = vec![];
-        for entry in program.hint.iter() {
-            match &entry {
-                Element::Num(v) => {
-                    witness.push(num_to_str(*v));
-                }
-                Element::Str(v) => {
-                    witness.push(v.clone());
-                }
-            }
-        }
-
-        witnesses.push(witness);
-        outputs.push(
-            convert_to_witness(script! {
-                { ldm.hash_var.as_ref().unwrap().value.clone() }
-            })
-            .unwrap(),
-        );
+        let witness = extract_witness(&program, &num_to_str);
+        individual_scripts.push(program.script);
+        individual_witnesses.push(witness);
     }
 
     for query_idx in 0..8 {
@@ -144,67 +136,52 @@ pub fn compute_all_information() -> PlonkAllInformation {
         ] {
             let dsl = f(&hints, &mut ldm, query_idx).unwrap();
             let program = Compiler::compile(dsl).unwrap();
-
-            scripts.push(program.script);
-
-            let mut witness = vec![];
-            for entry in program.hint.iter() {
-                match &entry {
-                    Element::Num(v) => {
-                        witness.push(num_to_str(*v));
-                    }
-                    Element::Str(v) => {
-                        witness.push(v.clone());
-                    }
-                }
-            }
-
-            witnesses.push(witness);
-
-            outputs.push(
-                convert_to_witness(script! {
-                    { ldm.hash_var.as_ref().unwrap().value.clone() }
-                })
-                .unwrap(),
-            );
+            let witness = extract_witness(&program, &num_to_str);
+            individual_scripts.push(program.script);
+            individual_witnesses.push(witness);
         }
     }
 
-    for f in [super::part8_cleanup::generate_cs] {
-        let cs = f(&hints, &mut ldm).unwrap();
+    {
+        let cs = super::part8_cleanup::generate_cs(&hints, &mut ldm).unwrap();
         let program = Compiler::compile(cs).unwrap();
-
-        scripts.push(program.script);
-
-        let mut witness = vec![];
-        for entry in program.hint.iter() {
-            match &entry {
-                Element::Num(v) => {
-                    witness.push(num_to_str(*v));
-                }
-                Element::Str(v) => {
-                    witness.push(v.clone());
-                }
-            }
-        }
-
-        witnesses.push(witness);
-
-        outputs.push(
-            convert_to_witness(script! {
-                { ldm.hash_var.as_ref().unwrap().value.clone() }
-            })
-            .unwrap(),
-        );
+        let witness = extract_witness(&program, &num_to_str);
+        individual_scripts.push(program.script);
+        individual_witnesses.push(witness);
     }
 
-    assert_eq!(scripts.len(), witnesses.len());
-    assert_eq!(scripts.len(), outputs.len());
+    assert_eq!(individual_scripts.len(), 72);
+    assert_eq!(individual_witnesses.len(), 72);
+
+    // All 72 scripts are concatenated into a single transaction.
+    // Each compiled script pulls its hints from the stack bottom via OP_HINT
+    // (OP_DEPTH OP_1SUB OP_ROLL). When concatenated, unprocessed hints from
+    // later scripts remain at the stack bottom — each script naturally finds
+    // its hints after the previous script finishes.
+    let merged_script = script! {
+        for s in individual_scripts.iter() {
+            { s.clone() }
+        }
+    };
+
+    let merged_witness: Witness = individual_witnesses.iter().flatten().cloned().collect();
+
+    let final_output = convert_to_witness(script! {
+        { ldm.hash_var.as_ref().unwrap().value.clone() }
+    })
+    .unwrap();
+
+    println!(
+        "Merged 72 steps into 1 transaction: script={} bytes ({} KB), hints={}",
+        merged_script.len(),
+        merged_script.len() / 1024,
+        merged_witness.len(),
+    );
 
     PlonkAllInformation {
-        scripts,
-        witnesses,
-        outputs,
+        script: merged_script,
+        witness: merged_witness,
+        output: final_output,
     }
 }
 
@@ -241,48 +218,25 @@ impl CovenantProgram for PlonkVerifierProgram {
         let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
 
         let mut map = BTreeMap::new();
+        map.insert(
+            0,
+            script! {
+                OP_SWAP { 1 } OP_EQUALVERIFY
+                OP_ROT { 0 } OP_EQUALVERIFY
+                OP_SWAP { vec![0u8; 32] } OP_EQUALVERIFY
+                OP_TOALTSTACK
 
-        for script_idx in 0..(8 + 8 * 8) {
-            map.insert(
-                script_idx,
-                script! {
-                    // input:
-                    // - old pc
-                    // - old stack hash
-                    // - new pc
-                    // - new stack hash
+                { all_information.script.clone() }
 
-                    OP_SWAP { script_idx + 1 } OP_EQUALVERIFY
-                    OP_ROT { script_idx } OP_EQUALVERIFY
+                OP_DEPTH
+                { 1 }
+                OP_EQUALVERIFY
 
-                    if script_idx == 0 {
-                        OP_SWAP { vec![0u8; 32] } OP_EQUALVERIFY
-
-                        // stack:
-                        // - new stack hash
-                        OP_TOALTSTACK
-                    } else {
-                        // stack:
-                        // - old stack hash
-                        // - new stack hash
-                        OP_TOALTSTACK OP_TOALTSTACK
-
-                        { StackHash::hash_from_hint(1) }
-                        OP_FROMALTSTACK OP_EQUALVERIFY
-                    }
-
-                    { all_information.scripts[script_idx].clone() }
-
-                    OP_DEPTH
-                    { 1 }
-                    OP_EQUALVERIFY
-
-                    { StackHash::hash_drop(1) }
-                    OP_FROMALTSTACK OP_EQUALVERIFY
-                    OP_TRUE
-                },
-            );
-        }
+                { StackHash::hash_drop(1) }
+                OP_FROMALTSTACK OP_EQUALVERIFY
+                OP_TRUE
+            },
+        );
 
         map
     }
@@ -322,13 +276,13 @@ impl CovenantProgram for PlonkVerifierProgram {
         LeafVersion::from_consensus(0xc2).unwrap()
     }
 
-    fn run(id: usize, _: &Self::State, _: &Self::Input) -> Result<Self::State> {
+    fn run(_id: usize, _: &Self::State, _: &Self::Input) -> Result<Self::State> {
         let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
 
-        let final_stack = all_information.outputs[id].to_vec();
+        let final_stack = all_information.output.to_vec();
         let stack_hash = StackHash::compute(&final_stack);
         Ok(Self::State {
-            pc: id + 1,
+            pc: 1,
             stack_hash,
             stack: final_stack,
         })
@@ -337,42 +291,89 @@ impl CovenantProgram for PlonkVerifierProgram {
 
 #[cfg(test)]
 mod test {
-    use crate::dsl::plonk::covenant::{
-        compute_all_information, PlonkVerifierProgram, PlonkVerifierState, PLONK_ALL_INFORMATION,
-    };
-    use covenants_gadgets::test::{simulation_test, SimulationInstruction};
+    use crate::dsl::plonk::covenant::{compute_all_information, PLONK_ALL_INFORMATION};
+    use crate::treepp::*;
+    use bitcoin::hashes::Hash;
+    use bitcoin::TapLeafHash;
+    use bitcoin_scriptexec::{Exec, ExecCtx, FmtStack, Options, TxTemplate};
 
+    /// Test that the merged verifier script executes correctly.
+    ///
+    /// We directly create an Exec with OP_MUL/OP_MOD enabled and stack limit
+    /// disabled, matching GSR leaf version 0xc2 behavior.
     #[test]
     fn test_integration() {
-        // The integration assumes a fee rate of 7 sat/vByte.
-        // Note that in many situations, the fee rate is only 2 sat/vByte.
+        let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
 
-        let mut fees = vec![137466, 252521, 124127, 122111, 111880, 98045, 111401];
+        let input = all_information.get_input();
+        let expected_output = &all_information.output;
 
-        for _ in 0..8 {
-            fees.extend_from_slice(&[121112, 116760, 116601, 104270, 93215, 104236, 106638, 48561]);
+        let mut script_bytes = script! {
+            for elem in input.hints.iter() {
+                { elem.clone() }
+            }
         }
+        .to_bytes();
 
-        fees.push(59733);
+        script_bytes.extend_from_slice(all_information.script.as_bytes());
 
-        println!(
-            "total fee assuming 7 sat/vByte: {}",
-            fees.iter().sum::<usize>()
+        script_bytes.extend_from_slice(
+            script! {
+                for elem in expected_output.iter().rev() {
+                    { elem.clone() }
+                    OP_EQUALVERIFY
+                }
+                OP_TRUE
+            }
+            .as_bytes(),
         );
 
-        let mut test_generator = |old_state: &PlonkVerifierState| {
-            let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
+        let script = Script::from_bytes(script_bytes);
 
-            if old_state.pc < fees.len() {
-                Some(SimulationInstruction {
-                    program_index: old_state.pc,
-                    program_input: all_information.get_input(old_state.pc),
-                })
-            } else {
-                unimplemented!()
+        let mut options = Options::default();
+        options.experimental.op_mul = true;
+        options.experimental.op_mod = true;
+        options.enforce_stack_limit = false;
+
+        let mut exec = Exec::new(
+            ExecCtx::Tapscript,
+            options,
+            TxTemplate {
+                tx: bitcoin::Transaction {
+                    version: bitcoin::transaction::Version::TWO,
+                    lock_time: bitcoin::locktime::absolute::LockTime::ZERO,
+                    input: vec![],
+                    output: vec![],
+                },
+                prevouts: vec![],
+                input_idx: 0,
+                taproot_annex_scriptleaf: Some((TapLeafHash::all_zeros(), None)),
+            },
+            script,
+            vec![],
+        )
+        .expect("error creating exec");
+
+        loop {
+            if exec.exec_next().is_err() {
+                break;
             }
-        };
-
-        simulation_test::<PlonkVerifierProgram>(72, &mut test_generator);
+        }
+        let res = exec.result().unwrap();
+        if !res.success {
+            println!("{:8}", FmtStack(exec.stack().clone()));
+            println!("{:?}", res.error);
+            panic!(
+                "Verification failed: {:?}, max_stack={}",
+                res.error,
+                exec.stats().max_nb_stack_items,
+            );
+        }
+        println!(
+            "Verification passed! script={} KB, max_stack={}, opcodes={}",
+            all_information.script.len() / 1024,
+            exec.stats().max_nb_stack_items,
+            exec.stats().opcode_count,
+        );
     }
 }
