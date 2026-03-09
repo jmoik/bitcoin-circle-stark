@@ -1,4 +1,4 @@
-#[cfg(not(feature = "assume-op-mul"))]
+#[cfg(not(feature = "assume-gsr"))]
 use super::m31_limbs::{m31_to_limbs_gadget, M31LimbsVar};
 use super::table::TableVar;
 use crate::treepp::*;
@@ -11,7 +11,7 @@ use std::ops::{Add, Mul, Neg, Sub};
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::FieldExpOps;
 
-#[cfg(feature = "assume-op-mul")]
+#[cfg(feature = "assume-gsr")]
 const M31_MOD: u32 = (1u32 << 31) - 1;
 
 #[derive(Debug, Clone)]
@@ -55,6 +55,7 @@ impl AllocVar for M31Var {
     }
 }
 
+#[cfg(not(feature = "assume-gsr"))]
 impl Add for &M31Var {
     type Output = M31Var;
 
@@ -85,7 +86,7 @@ impl Sub for &M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-op-mul"))]
+#[cfg(not(feature = "assume-gsr"))]
 impl Mul for &M31Var {
     type Output = M31Var;
 
@@ -124,7 +125,7 @@ impl Mul for &M31Var {
     }
 }
 
-#[cfg(not(feature = "assume-op-mul"))]
+#[cfg(not(feature = "assume-gsr"))]
 impl Mul<(&TableVar, &M31Var)> for &M31Var {
     type Output = M31Var;
 
@@ -138,7 +139,7 @@ impl Mul<(&TableVar, &M31Var)> for &M31Var {
     }
 }
 
-#[cfg(feature = "assume-op-mul")]
+#[cfg(feature = "assume-gsr")]
 impl Mul<(&TableVar, &M31Var)> for &M31Var {
     type Output = M31Var;
 
@@ -149,6 +150,7 @@ impl Mul<(&TableVar, &M31Var)> for &M31Var {
     }
 }
 
+#[cfg(not(feature = "assume-gsr"))]
 impl Neg for &M31Var {
     type Output = M31Var;
 
@@ -179,7 +181,7 @@ impl M31Var {
             .unwrap();
     }
 
-    #[cfg(not(feature = "assume-op-mul"))]
+    #[cfg(not(feature = "assume-gsr"))]
     pub fn inverse(&self, table: &TableVar) -> Self {
         let self_limbs = M31LimbsVar::from(self);
         let inv_limbs = self_limbs.inverse(table);
@@ -199,7 +201,7 @@ impl M31Var {
         inv
     }
 
-    #[cfg(feature = "assume-op-mul")]
+    #[cfg(feature = "assume-gsr")]
     pub fn inverse(&self, _table: &TableVar) -> Self {
         // With OP_MUL, no need for limbs/table — just hint and verify
         self.inverse_without_table()
@@ -229,12 +231,7 @@ impl M31Var {
 
 /// OP_MUL-based M31 multiplication gadget.
 ///
-/// Stack input:  a, b, q  (q = floor(a*b / MOD), provided as hint)
-/// Stack output: r = a*b - q*MOD, verified r < MOD
-///
-/// The subtraction a*b - q*MOD is always non-negative because q = floor(a*b / MOD).
-/// Max values: a,b < 2^31, so a*b < 2^62, q*MOD < 2^62 — both fit in i64/Val64.
-#[cfg(feature = "assume-op-mul")]
+#[cfg(feature = "assume-gsr")]
 fn m31_mul_op_mul_gadget() -> Script {
     script! {
         // Stack: a, b, q
@@ -291,9 +288,9 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    #[cfg(not(feature = "assume-op-mul"))]
+    #[cfg(not(feature = "assume-gsr"))]
     use bitcoin_script_dsl::test_program;
-    #[cfg(feature = "assume-op-mul")]
+    #[cfg(feature = "assume-gsr")]
     use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;

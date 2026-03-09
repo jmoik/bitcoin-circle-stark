@@ -70,7 +70,7 @@ impl Mul<(&TableVar, &QM31LimbsVar)> for &QM31LimbsVar {
 }
 
 #[cfg(test)]
-#[cfg(not(feature = "assume-op-mul"))]
+#[cfg(not(feature = "assume-gsr"))]
 mod test {
     use crate::dsl::primitives::qm31::QM31Var;
     use crate::dsl::primitives::qm31_limbs::QM31LimbsVar;

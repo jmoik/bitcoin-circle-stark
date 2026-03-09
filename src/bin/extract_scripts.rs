@@ -7,7 +7,7 @@ const INPUT_DIR: &str = "./demo";
 const BASE_OUTPUT_DIR: &str = "./scripts";
 
 fn main() {
-    // Optional first argument: variant name (e.g. "assume-op-mul")
+    // Optional first argument: variant name (e.g. "assume-gsr")
     // Output goes to ./scripts/<variant>/ or ./scripts/default/
     let variant = std::env::args()
         .nth(1)

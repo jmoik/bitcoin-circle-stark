@@ -4,7 +4,7 @@ set -e
 # Optional: pass features to match how the demo was built
 # Usage:
 #   ./extract_scripts.sh                  # default (no features)
-#   ./extract_scripts.sh assume-op-mul    # with assume-op-mul feature
+#   ./extract_scripts.sh assume-gsr    # with assume-gsr feature
 FEATURES="${1:-}"
 
 # Derive variant name for output subdirectory

@@ -61,16 +61,10 @@ pub fn check_limb_format() -> Script {
 
 #[allow(non_snake_case)]
 pub fn OP_256MUL() -> Script {
-    #[cfg(feature = "assume-op-cat")]
     script! {
         OP_SIZE OP_NOT OP_NOTIF
         OP_PUSHBYTES_1 OP_PUSHBYTES_0 OP_SWAP OP_CAT
         OP_ENDIF
-    }
-    #[cfg(not(feature = "assume-op-cat"))]
-    script! {
-        OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
-        OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD OP_DUP OP_ADD
     }
 }
 

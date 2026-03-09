@@ -3,7 +3,7 @@ set -e
 
 # Configuration
 NETWORK="${1:-regtest}"
-FEATURES="${2:-}"  # Pass features: "gsr", "assume-op-mul", or "gsr,assume-op-mul"
+FEATURES="${2:-}"  # Pass features: "assume-gsr"
 # BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoin-cli"
 # BITCOIND="/Users/julian/Code/bitcoin/gsr_with_cat_in_baseleaf/build/bin/bitcoind"
 BITCOIN_CLI="/Users/julian/Code/bitcoin/gsr/build/bin/bitcoin-cli"
@@ -15,10 +15,8 @@ echo "Network: $NETWORK"
 echo
 
 # Example usage:
-#   ./run_demo.sh regtest                    # Default mode
-#   ./run_demo.sh regtest gsr                # GSR mode (fewer transactions)
-#   ./run_demo.sh regtest assume-op-mul      # With OP_MUL (smaller scripts)
-#   ./run_demo.sh regtest gsr,assume-op-mul  # Both features combined
+#   ./run_demo.sh regtest                                    # Default mode (72 transactions)
+#   ./run_demo.sh regtest assume-gsr                      # OP_MUL + OP_MOD (1 transaction)
 
 #$BITCOIN_CLI -"$NETWORK" stop
 $BITCOIND --daemon -"$NETWORK" --maxmempool=1000 > /dev/null

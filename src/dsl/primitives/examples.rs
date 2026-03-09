@@ -5,9 +5,9 @@ mod test {
     use crate::treepp::*;
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
-    #[cfg(not(feature = "assume-op-mul"))]
+    #[cfg(not(feature = "assume-gsr"))]
     use bitcoin_script_dsl::test_program;
-    #[cfg(feature = "assume-op-mul")]
+    #[cfg(feature = "assume-gsr")]
     use bitcoin_script_dsl::test_program_with_op_mul as test_program;
     use rand::SeedableRng;
     use rand_chacha::ChaCha20Rng;
