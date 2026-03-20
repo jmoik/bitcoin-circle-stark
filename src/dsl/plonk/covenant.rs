@@ -291,11 +291,15 @@ impl CovenantProgram for PlonkVerifierProgram {
 
 #[cfg(test)]
 mod test {
-    use crate::dsl::plonk::covenant::{compute_all_information, PLONK_ALL_INFORMATION};
+    use crate::dsl::plonk::covenant::{
+        compute_all_information, PlonkVerifierProgram, PLONK_ALL_INFORMATION,
+    };
     use crate::treepp::*;
     use bitcoin::hashes::Hash;
     use bitcoin::TapLeafHash;
     use bitcoin_scriptexec::{Exec, ExecCtx, FmtStack, Options, TxTemplate};
+    use bitcoin_simulator::policy::Policy;
+    use covenants_gadgets::test::{simulation_test_with_policy, SimulationInstruction};
 
     /// Test that the merged verifier script executes correctly.
     ///
@@ -375,5 +379,26 @@ mod test {
             exec.stats().max_nb_stack_items,
             exec.stats().opcode_count,
         );
+    }
+
+    /// Test the full covenant simulation flow: Schnorr trick, state hash
+    /// verification, taproot commitment, and caboose output.
+    #[test]
+    fn test_covenant_simulation() {
+        let all_information = PLONK_ALL_INFORMATION.get_or_init(compute_all_information);
+
+        let policy = Policy::default().set_fee(7).set_max_tx_weight(u32::MAX);
+
+        let mut test_generator =
+            |_state: &super::PlonkVerifierState| -> Option<SimulationInstruction<PlonkVerifierProgram>> {
+                Some(SimulationInstruction {
+                    program_index: 0,
+                    program_input: all_information.get_input(),
+                })
+            };
+
+        simulation_test_with_policy::<PlonkVerifierProgram>(1, &mut test_generator, &policy);
+
+        println!("Covenant simulation test passed!");
     }
 }

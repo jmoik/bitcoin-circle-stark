@@ -188,6 +188,7 @@ mod test {
     use bitcoin_script_dsl::bvar::AllocVar;
     use bitcoin_script_dsl::constraint_system::ConstraintSystem;
     use bitcoin_script_dsl::test_program;
+    use bitcoin_script_dsl::test_program_with_op_mul;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
     use stwo_prover::core::channel::{Channel, Sha256Channel};
@@ -247,7 +248,7 @@ mod test {
             cs.set_program_output(elem).unwrap();
         }
 
-        test_program(
+        test_program_with_op_mul(
             cs,
             script! {
                 { channel.digest.as_ref().to_vec() }

@@ -215,6 +215,7 @@ dependencies = [
  "bitcoin-script",
  "bitcoin-script-dsl",
  "bitcoin-scriptexec",
+ "bitcoin-simulator",
  "cargo-husky",
  "clap",
  "colored",
@@ -279,7 +280,7 @@ dependencies = [
 [[package]]
 name = "bitcoin-scriptexec"
 version = "0.0.0"
-source = "git+https://github.com/jmoik/rust-bitcoin-scriptexec?branch=gsr#eee4a8ae87307652615e026cf67456bf65a27178"
+source = "git+https://github.com/jmoik/rust-bitcoin-scriptexec?branch=gsr#c591f9500b3e83305d60e70b9e9cedc86ac9c4e1"
 dependencies = [
  "anyhow",
  "bitcoin",
@@ -290,7 +291,7 @@ dependencies = [
 [[package]]
 name = "bitcoin-simulator"
 version = "0.1.0"
-source = "git+https://github.com/jmoik/bitcoin-simulator?branch=gsr#b38208242ce18e2b2d4115456a40aa4e3bd8864a"
+source = "git+https://github.com/jmoik/bitcoin-simulator?branch=gsr#f86e120e3244187ee46271a59b7af73165bac0a7"
 dependencies = [
  "anyhow",
  "bitcoin",
